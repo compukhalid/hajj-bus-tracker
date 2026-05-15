@@ -200,12 +200,30 @@ const BusMgmtPage=({busConfigs,onUpdate,settings,onUpdateSettings,onBack,t})=>{
 const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers,savedReceivers,onSaveUsers,onSaveReceivers,onBack,t,readOnly,baseUrl})=>{
   const[addModal,setAddModal]=useState(false);const[carNum,setCarNum]=useState("");const[plate,setPlate]=useState("");const[driver,setDriver]=useState("");
   const[driverImg,setDriverImg]=useState(null);const[carImg,setCarImg]=useState(null);const[uploading,setUploading]=useState(false);
-  const[selectedCar,setSelectedCar]=useState(null);
   const[useModal,setUseModal]=useState(null);const[userName,setUserName]=useState("");const[userPhone,setUserPhone]=useState("");
   const[returnModal,setReturnModal]=useState(null);const[receiver,setReceiver]=useState("");
   const[histModal,setHistModal]=useState(null);const[history,setHistory]=useState([]);
+  const[manageSavedModal,setManageSavedModal]=useState(false);
+  // Real-time car tracking locations
+  const[carTrackingLocs,setCarTrackingLocs]=useState({});
 
   useEffect(()=>{if(histModal){const unsub=listenToCarHistory(histModal,setHistory);return()=>unsub();}},[histModal]);
+
+  // Listen to all active car tracking locations
+  useEffect(()=>{
+    const unsubs=[];
+    cars.forEach(car=>{
+      if(car.status==="in-use"&&car.trackingId){
+        const unsub=listenToCarTracking(car.trackingId,(data)=>{
+          if(data?.location){
+            setCarTrackingLocs(prev=>({...prev,[car.id]:{lat:data.location.lat,lng:data.location.lng,lastUpdate:data.lastUpdate}}));
+          }
+        });
+        unsubs.push(unsub);
+      }
+    });
+    return()=>unsubs.forEach(u=>u());
+  },[cars]);
 
   const addCar=async()=>{if(!carNum.trim())return;setUploading(true);
     let dUrl="",cUrl="";
@@ -221,7 +239,14 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers,savedRece
     await onSaveCar(car.id,{...car,status:"in-use",currentUser:{name:userName.trim(),phone:userPhone.trim(),startTime:Date.now()},trackingId});
     await saveCarTracking(trackingId,{carId:car.id,userName:userName.trim(),active:true,location:null});
     await onAddHistory(car.id,{type:"checkout",userName:userName.trim(),userPhone:userPhone.trim(),timestamp:Date.now()});
-    if(!savedUsers.includes(userName.trim())){onSaveUsers([...savedUsers,userName.trim()]);}
+    // Save user with phone — savedUsers is array of {name, phone}
+    const existing=savedUsers.find(u=>u.name===userName.trim());
+    if(!existing){
+      onSaveUsers([...savedUsers,{name:userName.trim(),phone:userPhone.trim()}]);
+    } else if(userPhone.trim()&&existing.phone!==userPhone.trim()){
+      // Update phone if changed
+      onSaveUsers(savedUsers.map(u=>u.name===userName.trim()?{...u,phone:userPhone.trim()}:u));
+    }
     setUserName("");setUserPhone("");setUseModal(null);
   };
 
@@ -229,28 +254,39 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers,savedRece
     if(car.trackingId){await saveCarTracking(car.trackingId,{active:false});}
     await onSaveCar(car.id,{...car,status:"available",currentUser:null,trackingId:null});
     await onAddHistory(car.id,{type:"return",receiver:receiver.trim(),timestamp:Date.now(),previousUser:car.currentUser?.name||""});
-    if(!savedReceivers.includes(receiver.trim())){onSaveReceivers([...savedReceivers,receiver.trim()]);}
+    if(!savedReceivers.find(r=>r===receiver.trim())){onSaveReceivers([...savedReceivers,receiver.trim()]);}
     setReceiver("");setReturnModal(null);
+    // Remove tracking location
+    setCarTrackingLocs(prev=>{const n={...prev};delete n[car.id];return n;});
   };
 
   const trackingUrl=(trackingId)=>`${baseUrl}/track/${trackingId}`;
   const copyText=(text)=>{const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);};
 
-  // Map locations for in-use cars
-  const carLocations=cars.filter(c=>c.status==="in-use"&&c.currentUser).map(c=>({id:c.id,lat:26.22+(Math.random()*0.02),lng:50.58+(Math.random()*0.02),color:"#06B6D4",status:"commuting",label:c.carNumber}));
+  // Map locations from real tracking data
+  const carLocations=cars.filter(c=>c.status==="in-use").map(c=>{
+    const loc=carTrackingLocs[c.id];
+    if(!loc) return null;
+    return {id:c.id,lat:loc.lat,lng:loc.lng,color:"#06B6D4",status:"commuting",label:c.carNumber};
+  }).filter(Boolean);
+
+  const selectOpt={background:"#1E293B",color:"#F1F5F9"};
 
   return(
     <div>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
         <button onClick={onBack} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:t.textMuted,borderRadius:10,padding:"8px 14px",cursor:"pointer",fontSize:14,fontWeight:600,fontFamily:"inherit"}}>→ رجوع</button>
         <div style={{flex:1}}><div style={{fontSize:20,fontWeight:800}}>🚗 إدارة السيارات</div><div style={{fontSize:12,color:t.textDim}}>{cars.length} سيارة — {cars.filter(c=>c.status==="in-use").length} مستخدمة</div></div>
-        {!readOnly&&<Btn onClick={()=>setAddModal(true)} color="#06B6D4" small>+ إضافة سيارة</Btn>}
+        <div style={{display:"flex",gap:6}}>
+          {!readOnly&&<Btn onClick={()=>setManageSavedModal(true)} color="#8B5CF6" small>📇 المستخدمون</Btn>}
+          {!readOnly&&<Btn onClick={()=>setAddModal(true)} color="#06B6D4" small>+ سيارة</Btn>}
+        </div>
       </div>
 
       {carLocations.length>0&&<SimpleMap locations={carLocations} height={250}/>}
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:12}}>
-        {cars.map(car=>{const inUse=car.status==="in-use";return(
+        {cars.map(car=>{const inUse=car.status==="in-use";const loc=carTrackingLocs[car.id];return(
           <div key={car.id} style={{background:t.bgCard,borderRadius:14,border:`1px solid ${inUse?"rgba(6,182,212,0.3)":t.border}`,padding:16,position:"relative",overflow:"hidden"}}>
             <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:inUse?"#06B6D4":"#64748B"}}/>
             <div style={{display:"flex",gap:12,marginBottom:12}}>
@@ -268,13 +304,15 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers,savedRece
                 <div style={{fontSize:12}}>المستخدم: {car.currentUser.name}</div>
                 {car.currentUser.phone&&<a href={`tel:${car.currentUser.phone}`} style={{fontSize:12,color:"#60A5FA",textDecoration:"none"}}>📱 {car.currentUser.phone}</a>}
                 <div style={{fontSize:10,color:t.textDim,marginTop:4}}>منذ: {new Date(car.currentUser.startTime).toLocaleString("ar-BH")}</div>
+                {loc&&<div style={{fontSize:10,color:"#22C55E",marginTop:2}}>📍 آخر تحديث: {loc.lastUpdate?new Date(loc.lastUpdate).toLocaleTimeString("ar-BH"):""}</div>}
+                {!loc&&<div style={{fontSize:10,color:"#FBBF24",marginTop:2}}>⏳ بانتظار موقع المستخدم...</div>}
                 {car.trackingId&&<div style={{marginTop:6}}><div style={{fontSize:10,color:t.textDim}}>رابط التتبع:</div><div style={{display:"flex",gap:4,marginTop:2}}><input readOnly value={trackingUrl(car.trackingId)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:"inherit",borderRadius:6,padding:"4px 8px",fontSize:10,fontFamily:"monospace",outline:"none"}}/><Btn onClick={()=>copyText(trackingUrl(car.trackingId))} color="#3B82F6" small style={{fontSize:10}}>نسخ</Btn></div></div>}
               </div>)}
             </div>
             <div style={{display:"flex",gap:6}}>
               {!readOnly&&!inUse&&<Btn onClick={()=>{setUseModal(car);setUserName("");setUserPhone("");}} color="#06B6D4" small style={{flex:1}}>تسجيل استخدام</Btn>}
               {!readOnly&&inUse&&<Btn onClick={()=>{setReturnModal(car);setReceiver("");}} color="#22C55E" small style={{flex:1}}>تسليم المفتاح</Btn>}
-              <Btn onClick={()=>setHistModal(car.id)} color="transparent" small style={{border:`1px solid ${t.border}`,color:t.textMuted}}>📋 السجل</Btn>
+              <Btn onClick={()=>setHistModal(car.id)} color="transparent" small style={{border:`1px solid ${t.border}`,color:t.textMuted}}>📋</Btn>
               {!readOnly&&<Btn onClick={()=>{if(window.confirm("حذف السيارة؟"))onDeleteCar(car.id);}} color="#EF4444" small>🗑️</Btn>}
             </div>
           </div>
@@ -295,13 +333,16 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers,savedRece
 
       {/* Use car modal */}
       <Modal open={!!useModal} onClose={()=>setUseModal(null)} title="🚗 تسجيل استخدام" t={t}>
-        <div style={{fontSize:11,color:t.textDim,marginBottom:4}}>اسم المستخدم</div>
-        <div style={{display:"flex",gap:6,marginBottom:8}}>
-          <select value={userName} onChange={e=>setUserName(e.target.value)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:"inherit",borderRadius:6,padding:"8px",fontSize:12,fontFamily:"inherit",outline:"none"}}>
-            <option value="">اختر أو اكتب...</option>{savedUsers.map(n=><option key={n} value={n}>{n}</option>)}
-          </select>
-          <Input value={userName} onChange={setUserName} placeholder="أو اكتب اسم جديد" style={{flex:1}}/>
-        </div>
+        <div style={{fontSize:11,color:t.textDim,marginBottom:4}}>اختر مستخدم سابق أو اكتب اسم جديد</div>
+        <select value="" onChange={e=>{
+          const sel=savedUsers.find(u=>u.name===e.target.value);
+          if(sel){setUserName(sel.name);setUserPhone(sel.phone||"");}
+        }} style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:"inherit",borderRadius:6,padding:"8px",fontSize:12,fontFamily:"inherit",outline:"none",marginBottom:8}}>
+          <option value="" style={selectOpt}>— اختر من القائمة —</option>
+          {savedUsers.map((u,i)=><option key={i} value={u.name} style={selectOpt}>{u.name}{u.phone?` (${u.phone})`:""}</option>)}
+        </select>
+        <div style={{fontSize:11,color:t.textDim,marginBottom:4}}>الاسم</div>
+        <Input value={userName} onChange={setUserName} placeholder="اسم المستخدم" style={{marginBottom:8}}/>
         <div style={{fontSize:11,color:t.textDim,marginBottom:4}}>رقم الهاتف</div>
         <Input value={userPhone} onChange={setUserPhone} placeholder="رقم الهاتف" style={{marginBottom:12}}/>
         <Btn onClick={()=>markUsed(useModal)} disabled={!userName.trim()} color="#06B6D4" style={{width:"100%"}}>✅ تأكيد</Btn>
@@ -310,12 +351,11 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers,savedRece
       {/* Return car modal */}
       <Modal open={!!returnModal} onClose={()=>setReturnModal(null)} title="🔑 تسليم المفتاح" t={t}>
         <div style={{fontSize:11,color:t.textDim,marginBottom:4}}>تم التسليم إلى</div>
-        <div style={{display:"flex",gap:6,marginBottom:8}}>
-          <select value={receiver} onChange={e=>setReceiver(e.target.value)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:"inherit",borderRadius:6,padding:"8px",fontSize:12,fontFamily:"inherit",outline:"none"}}>
-            <option value="">اختر أو اكتب...</option>{savedReceivers.map(n=><option key={n} value={n}>{n}</option>)}
-          </select>
-          <Input value={receiver} onChange={setReceiver} placeholder="أو اكتب اسم جديد" style={{flex:1}}/>
-        </div>
+        <select value="" onChange={e=>{if(e.target.value)setReceiver(e.target.value);}} style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:"inherit",borderRadius:6,padding:"8px",fontSize:12,fontFamily:"inherit",outline:"none",marginBottom:8}}>
+          <option value="" style={selectOpt}>— اختر من القائمة —</option>
+          {savedReceivers.map((n,i)=><option key={i} value={n} style={selectOpt}>{n}</option>)}
+        </select>
+        <Input value={receiver} onChange={setReceiver} placeholder="أو اكتب اسم جديد" style={{marginBottom:8}}/>
         <div style={{fontSize:11,color:t.textDim,marginBottom:12}}>⏰ سيتم تسجيل الوقت الحالي تلقائياً</div>
         <Btn onClick={()=>markAvailable(returnModal)} disabled={!receiver.trim()} color="#22C55E" style={{width:"100%"}}>✅ تأكيد التسليم</Btn>
       </Modal>
@@ -331,6 +371,26 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers,savedRece
             </div>
             {h.type==="checkout"&&<div style={{color:t.textMuted,marginTop:4}}>المستخدم: {h.userName}{h.userPhone?` (${h.userPhone})`:""}</div>}
             {h.type==="return"&&<div style={{color:t.textMuted,marginTop:4}}>المستلم: {h.receiver}{h.previousUser?` | كان: ${h.previousUser}`:""}</div>}
+          </div>
+        ))}</div>}
+      </Modal>
+
+      {/* Manage saved users/receivers */}
+      <Modal open={manageSavedModal} onClose={()=>setManageSavedModal(false)} title="📇 إدارة المستخدمين المحفوظين" width={500} t={t}>
+        <div style={{fontSize:13,fontWeight:700,color:t.textMuted,marginBottom:8}}>مستخدمو السيارات</div>
+        {savedUsers.length===0?<div style={{fontSize:12,color:t.textDim,padding:10,textAlign:"center"}}>لا يوجد</div>:
+        <div style={{marginBottom:16}}>{savedUsers.map((u,i)=>(
+          <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",borderRadius:8,background:t.bgCard,border:`1px solid ${t.border}`,marginBottom:4}}>
+            <div><div style={{fontSize:13,fontWeight:600}}>{u.name}</div>{u.phone&&<div style={{fontSize:10,color:t.textDim}}>📱 {u.phone}</div>}</div>
+            <button onClick={()=>onSaveUsers(savedUsers.filter((_,j)=>j!==i))} style={{background:"rgba(239,68,68,0.15)",border:"none",color:"#EF4444",borderRadius:6,padding:"4px 8px",fontSize:10,cursor:"pointer",fontFamily:"inherit"}}>🗑️</button>
+          </div>
+        ))}</div>}
+        <div style={{fontSize:13,fontWeight:700,color:t.textMuted,marginBottom:8,marginTop:16,borderTop:`1px solid ${t.border}`,paddingTop:12}}>مستلمو المفاتيح</div>
+        {savedReceivers.length===0?<div style={{fontSize:12,color:t.textDim,padding:10,textAlign:"center"}}>لا يوجد</div>:
+        <div>{savedReceivers.map((n,i)=>(
+          <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",borderRadius:8,background:t.bgCard,border:`1px solid ${t.border}`,marginBottom:4}}>
+            <div style={{fontSize:13,fontWeight:600}}>{n}</div>
+            <button onClick={()=>onSaveReceivers(savedReceivers.filter((_,j)=>j!==i))} style={{background:"rgba(239,68,68,0.15)",border:"none",color:"#EF4444",borderRadius:6,padding:"4px 8px",fontSize:10,cursor:"pointer",fontFamily:"inherit"}}>🗑️</button>
           </div>
         ))}</div>}
       </Modal>
