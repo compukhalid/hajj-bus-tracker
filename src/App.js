@@ -294,13 +294,13 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers:rawSavedU
           <div key={car.id} style={{background:t.bgCard,borderRadius:14,border:`1px solid ${inUse?"rgba(6,182,212,0.3)":t.border}`,padding:16,position:"relative",overflow:"hidden"}}>
             <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:inUse?"#06B6D4":"#64748B"}}/>
             <div style={{display:"flex",gap:12,marginBottom:12}}>
-              {car.carImage&&<img src={car.carImage} alt="" onClick={()=>setPreviewImg(car.carImage)} style={{width:60,height:45,objectFit:"cover",borderRadius:8,border:`1px solid ${t.border}`,cursor:"pointer"}}/>}
+              {car.carImage&&<img src={car.carImage} alt="" onClick={(e)=>{e.stopPropagation();setPreviewImg(car.carImage);}} style={{width:60,height:45,objectFit:"cover",borderRadius:8,border:`1px solid ${t.border}`,cursor:"pointer"}}/>}
               <div style={{flex:1}}>
                 <div style={{fontSize:16,fontWeight:800}}>{car.carNumber}</div>
                 <div style={{fontSize:11,color:t.textDim}}>لوحة: {car.plate}</div>
                 <div style={{fontSize:11,color:t.textDim}}>السائق: {car.driverName}</div>
               </div>
-              {car.driverImage&&<img src={car.driverImage} alt="" onClick={()=>setPreviewImg(car.driverImage)} style={{width:40,height:40,objectFit:"cover",borderRadius:"50%",border:`2px solid ${t.border}`,cursor:"pointer"}}/>}
+              {car.driverImage&&<img src={car.driverImage} alt="" onClick={(e)=>{e.stopPropagation();setPreviewImg(car.driverImage);}} style={{width:40,height:40,objectFit:"cover",borderRadius:"50%",border:`2px solid ${t.border}`,cursor:"pointer"}}/>}
             </div>
             <div style={{padding:"8px 12px",borderRadius:8,background:inUse?"rgba(6,182,212,0.1)":"rgba(34,197,94,0.1)",border:`1px solid ${inUse?"rgba(6,182,212,0.2)":"rgba(34,197,94,0.2)"}`,marginBottom:10}}>
               <div style={{fontSize:13,fontWeight:700,color:inUse?"#06B6D4":"#22C55E"}}>{inUse?"🚗 مستخدمة":"✅ غير مستخدمة"}</div>
@@ -620,28 +620,73 @@ const FamilyCreator=({unassigned,students,onCreateFamily,t})=>{
 /* ═══════ TRACKING PAGE (public, no login) ═══════ */
 const TrackingPage=({trackingId})=>{
   const[status,setStatus]=useState("connecting");
+  const[coords,setCoords]=useState(null);
+  const[accuracy,setAccuracy]=useState(null);
+  const[updateCount,setUpdateCount]=useState(0);
+
   useEffect(()=>{
     if(!trackingId)return;
-    // Send GPS to Firebase
     if(!navigator.geolocation){setStatus("no-gps");return;}
-    setStatus("active");
-    const watchId=navigator.geolocation.watchPosition(pos=>{
-      saveCarTracking(trackingId,{location:{lat:pos.coords.latitude,lng:pos.coords.longitude},lastUpdate:Date.now(),active:true});
-    },()=>setStatus("error"),{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+
+    // First: request a single high-accuracy position to trigger permission prompt
+    navigator.geolocation.getCurrentPosition(
+      (pos)=>{
+        setStatus("active");
+        const loc={lat:pos.coords.latitude,lng:pos.coords.longitude};
+        setCoords(loc);setAccuracy(Math.round(pos.coords.accuracy));
+        saveCarTracking(trackingId,{location:loc,lastUpdate:Date.now(),active:true,accuracy:pos.coords.accuracy});
+        setUpdateCount(c=>c+1);
+      },
+      (err)=>{setStatus("error");},
+      {enableHighAccuracy:true,timeout:15000,maximumAge:0}
+    );
+
+    // Then: continuously watch with high accuracy
+    const watchId=navigator.geolocation.watchPosition(
+      (pos)=>{
+        setStatus("active");
+        const loc={lat:pos.coords.latitude,lng:pos.coords.longitude};
+        setCoords(loc);setAccuracy(Math.round(pos.coords.accuracy));
+        saveCarTracking(trackingId,{location:loc,lastUpdate:Date.now(),active:true,accuracy:pos.coords.accuracy});
+        setUpdateCount(c=>c+1);
+      },
+      (err)=>{
+        if(err.code===1) setStatus("denied");
+        else setStatus("error");
+      },
+      {enableHighAccuracy:true,maximumAge:0,timeout:20000}
+    );
     return()=>navigator.geolocation.clearWatch(watchId);
   },[trackingId]);
+
   return(
     <div style={{minHeight:"100vh",background:"#0F172A",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,direction:"rtl",fontFamily:"'IBM Plex Sans Arabic',sans-serif",color:"#F1F5F9"}}>
       <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;700&display=swap" rel="stylesheet"/>
       <div style={{fontSize:48,marginBottom:16}}>🚗</div>
       <div style={{fontSize:22,fontWeight:800,marginBottom:8}}>تتبع السيارة</div>
-      <div style={{fontSize:14,color:status==="active"?"#22C55E":status==="error"?"#EF4444":"#FBBF24",fontWeight:600}}>
-        {status==="active"&&"📍 يتم إرسال موقعك..."}
-        {status==="error"&&"⚠️ خطأ في GPS — فعّل خدمات الموقع"}
-        {status==="no-gps"&&"⚠️ GPS غير متاح"}
-        {status==="connecting"&&"جاري الاتصال..."}
+      <div style={{fontSize:14,color:status==="active"?"#22C55E":status==="error"||status==="denied"?"#EF4444":"#FBBF24",fontWeight:600,textAlign:"center",lineHeight:1.8}}>
+        {status==="active"&&"📍 يتم إرسال موقعك بنجاح"}
+        {status==="error"&&"⚠️ خطأ في GPS — تأكد من تفعيل خدمات الموقع في إعدادات الهاتف"}
+        {status==="denied"&&"🚫 تم رفض إذن الموقع — اسمح للمتصفح بالوصول للموقع من الإعدادات"}
+        {status==="no-gps"&&"⚠️ GPS غير متاح في هذا الجهاز"}
+        {status==="connecting"&&"جاري طلب إذن الموقع..."}
       </div>
-      {status==="active"&&<div style={{marginTop:16,fontSize:12,color:"#94A3B8"}}>أبقِ هذه الصفحة مفتوحة أثناء استخدام السيارة</div>}
+      {status==="active"&&coords&&(
+        <div style={{marginTop:20,background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.3)",borderRadius:12,padding:16,textAlign:"center",width:"100%",maxWidth:350}}>
+          <div style={{fontSize:12,color:"#94A3B8",marginBottom:8}}>📡 بيانات الموقع</div>
+          <div style={{fontSize:11,color:"#22C55E",fontFamily:"monospace",marginBottom:4}}>خط العرض: {coords.lat.toFixed(6)}</div>
+          <div style={{fontSize:11,color:"#22C55E",fontFamily:"monospace",marginBottom:4}}>خط الطول: {coords.lng.toFixed(6)}</div>
+          <div style={{fontSize:11,color:accuracy&&accuracy<50?"#22C55E":accuracy&&accuracy<200?"#FBBF24":"#EF4444",marginBottom:4}}>الدقة: {accuracy} متر</div>
+          <div style={{fontSize:10,color:"#64748B"}}>عدد التحديثات: {updateCount}</div>
+        </div>
+      )}
+      {status==="active"&&<div style={{marginTop:16,fontSize:12,color:"#94A3B8",textAlign:"center"}}>⚠️ أبقِ هذه الصفحة مفتوحة ولا تقفل الشاشة</div>}
+      {(status==="error"||status==="denied")&&<div style={{marginTop:16,fontSize:12,color:"#94A3B8",textAlign:"center",lineHeight:1.8}}>
+        حاول الخطوات التالية:<br/>
+        1. افتح إعدادات الهاتف → الموقع → فعّله<br/>
+        2. في المتصفح اسمح بالوصول للموقع<br/>
+        3. أعد تحميل هذه الصفحة
+      </div>}
     </div>
   );
 };
