@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, setDoc, onSnapshot, collection } from "firebase/firestore";
+import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, getDocs, updateDoc, deleteDoc, query, orderBy } from "firebase/firestore";
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB9gFK33FsmwpFRrqhhYVucKfwbU7D1OC8",
@@ -12,71 +13,78 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
-// ═══════ Save data to Firestore ═══════
+// ═══════ BUS DATA ═══════
 export const saveBusData = async (busId, data) => {
-  try {
-    await setDoc(doc(db, "buses", String(busId)), data);
-  } catch (e) {
-    console.error("Error saving bus data:", e);
-  }
+  try { await setDoc(doc(db, "buses", String(busId)), data); } catch (e) { console.error("saveBusData:", e); }
 };
-
 export const saveBusConfigs = async (configs) => {
-  try {
-    await setDoc(doc(db, "settings", "busConfigs"), { configs });
-  } catch (e) {
-    console.error("Error saving bus configs:", e);
-  }
+  try { await setDoc(doc(db, "settings", "busConfigs"), { configs }); } catch (e) { console.error("saveBusConfigs:", e); }
+};
+export const saveSettings = async (key, data) => {
+  try { await setDoc(doc(db, "settings", key), data); } catch (e) { console.error("saveSettings:", e); }
 };
 
-export const saveAdminPin = async (pin) => {
-  try {
-    await setDoc(doc(db, "settings", "adminPin"), { pin });
-  } catch (e) {
-    console.error("Error saving admin pin:", e);
-  }
-};
-
-export const saveOpenBoarding = async (value) => {
-  try {
-    await setDoc(doc(db, "settings", "openBoarding"), { enabled: value });
-  } catch (e) {
-    console.error("Error saving open boarding:", e);
-  }
-};
-
-// ═══════ Listen to real-time changes ═══════
-export const listenToBusData = (busId, callback) => {
-  return onSnapshot(doc(db, "buses", String(busId)), (snap) => {
-    if (snap.exists()) callback(snap.data());
-  });
-};
-
+// ═══════ LISTENERS ═══════
 export const listenToAllBuses = (callback) => {
   return onSnapshot(collection(db, "buses"), (snap) => {
-    const buses = [];
-    snap.forEach((d) => buses.push({ id: Number(d.id), ...d.data() }));
-    callback(buses);
+    const buses = []; snap.forEach((d) => buses.push({ id: Number(d.id), ...d.data() })); callback(buses);
   });
 };
-
 export const listenToBusConfigs = (callback) => {
-  return onSnapshot(doc(db, "settings", "busConfigs"), (snap) => {
-    if (snap.exists()) callback(snap.data().configs);
+  return onSnapshot(doc(db, "settings", "busConfigs"), (snap) => { if (snap.exists()) callback(snap.data().configs); });
+};
+export const listenToSettings = (key, callback) => {
+  return onSnapshot(doc(db, "settings", key), (snap) => { if (snap.exists()) callback(snap.data()); });
+};
+
+// ═══════ CARS ═══════
+export const saveCar = async (carId, data) => {
+  try { await setDoc(doc(db, "cars", carId), data); } catch (e) { console.error("saveCar:", e); }
+};
+export const deleteCar = async (carId) => {
+  try { await deleteDoc(doc(db, "cars", carId)); } catch (e) { console.error("deleteCar:", e); }
+};
+export const listenToCars = (callback) => {
+  return onSnapshot(collection(db, "cars"), (snap) => {
+    const cars = []; snap.forEach((d) => cars.push({ id: d.id, ...d.data() })); callback(cars);
   });
 };
 
-export const listenToAdminPin = (callback) => {
-  return onSnapshot(doc(db, "settings", "adminPin"), (snap) => {
-    if (snap.exists()) callback(snap.data().pin);
+// ═══════ CAR USAGE HISTORY ═══════
+export const addCarHistory = async (carId, entry) => {
+  try { await addDoc(collection(db, "cars", carId, "history"), entry); } catch (e) { console.error("addCarHistory:", e); }
+};
+export const listenToCarHistory = (carId, callback) => {
+  return onSnapshot(collection(db, "cars", carId, "history"), (snap) => {
+    const h = []; snap.forEach((d) => h.push({ id: d.id, ...d.data() })); h.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)); callback(h);
   });
 };
 
-export const listenToOpenBoarding = (callback) => {
-  return onSnapshot(doc(db, "settings", "openBoarding"), (snap) => {
-    if (snap.exists()) callback(snap.data().enabled);
-  });
+// ═══════ CAR TRACKING (public links) ═══════
+export const saveCarTracking = async (trackingId, data) => {
+  try { await setDoc(doc(db, "tracking", trackingId), data); } catch (e) { console.error("saveCarTracking:", e); }
+};
+export const listenToCarTracking = (trackingId, callback) => {
+  return onSnapshot(doc(db, "tracking", trackingId), (snap) => { if (snap.exists()) callback(snap.data()); });
 };
 
-export { db };
+// ═══════ SAVED NAMES ═══════
+export const saveSavedNames = async (key, names) => {
+  try { await setDoc(doc(db, "savedNames", key), { names }); } catch (e) { console.error("saveSavedNames:", e); }
+};
+export const listenToSavedNames = (key, callback) => {
+  return onSnapshot(doc(db, "savedNames", key), (snap) => { if (snap.exists()) callback(snap.data().names); });
+};
+
+// ═══════ IMAGE UPLOAD ═══════
+export const uploadImage = async (path, file) => {
+  try {
+    const sRef = storageRef(storage, path);
+    await uploadBytes(sRef, file);
+    return await getDownloadURL(sRef);
+  } catch (e) { console.error("uploadImage:", e); return null; }
+};
+
+export { db, storage };
