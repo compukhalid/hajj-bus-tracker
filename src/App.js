@@ -197,15 +197,19 @@ const BusMgmtPage=({busConfigs,onUpdate,settings,onUpdateSettings,onBack,t})=>{
 };
 
 /* ═══════ CAR MANAGEMENT ═══════ */
-const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers,savedReceivers,onSaveUsers,onSaveReceivers,onBack,t,readOnly,baseUrl})=>{
+const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers:rawSavedUsers,savedReceivers,onSaveUsers,onSaveReceivers,onBack,t,readOnly,baseUrl})=>{
   const[addModal,setAddModal]=useState(false);const[carNum,setCarNum]=useState("");const[plate,setPlate]=useState("");const[driver,setDriver]=useState("");
   const[driverImg,setDriverImg]=useState(null);const[carImg,setCarImg]=useState(null);const[uploading,setUploading]=useState(false);
   const[useModal,setUseModal]=useState(null);const[userName,setUserName]=useState("");const[userPhone,setUserPhone]=useState("");
   const[returnModal,setReturnModal]=useState(null);const[receiver,setReceiver]=useState("");
   const[histModal,setHistModal]=useState(null);const[history,setHistory]=useState([]);
   const[manageSavedModal,setManageSavedModal]=useState(false);
+  const[previewImg,setPreviewImg]=useState(null);
   // Real-time car tracking locations
   const[carTrackingLocs,setCarTrackingLocs]=useState({});
+
+  // Normalize savedUsers: handle old string[] format and new {name,phone}[] format
+  const savedUsers=(rawSavedUsers||[]).map(u=>typeof u==="string"?{name:u,phone:""}:u).filter(u=>u&&u.name);
 
   useEffect(()=>{if(histModal){const unsub=listenToCarHistory(histModal,setHistory);return()=>unsub();}},[histModal]);
 
@@ -290,13 +294,13 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers,savedRece
           <div key={car.id} style={{background:t.bgCard,borderRadius:14,border:`1px solid ${inUse?"rgba(6,182,212,0.3)":t.border}`,padding:16,position:"relative",overflow:"hidden"}}>
             <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:inUse?"#06B6D4":"#64748B"}}/>
             <div style={{display:"flex",gap:12,marginBottom:12}}>
-              {car.carImage&&<img src={car.carImage} alt="" style={{width:60,height:45,objectFit:"cover",borderRadius:8,border:`1px solid ${t.border}`}}/>}
+              {car.carImage&&<img src={car.carImage} alt="" onClick={()=>setPreviewImg(car.carImage)} style={{width:60,height:45,objectFit:"cover",borderRadius:8,border:`1px solid ${t.border}`,cursor:"pointer"}}/>}
               <div style={{flex:1}}>
                 <div style={{fontSize:16,fontWeight:800}}>{car.carNumber}</div>
                 <div style={{fontSize:11,color:t.textDim}}>لوحة: {car.plate}</div>
                 <div style={{fontSize:11,color:t.textDim}}>السائق: {car.driverName}</div>
               </div>
-              {car.driverImage&&<img src={car.driverImage} alt="" style={{width:40,height:40,objectFit:"cover",borderRadius:"50%",border:`2px solid ${t.border}`}}/>}
+              {car.driverImage&&<img src={car.driverImage} alt="" onClick={()=>setPreviewImg(car.driverImage)} style={{width:40,height:40,objectFit:"cover",borderRadius:"50%",border:`2px solid ${t.border}`,cursor:"pointer"}}/>}
             </div>
             <div style={{padding:"8px 12px",borderRadius:8,background:inUse?"rgba(6,182,212,0.1)":"rgba(34,197,94,0.1)",border:`1px solid ${inUse?"rgba(6,182,212,0.2)":"rgba(34,197,94,0.2)"}`,marginBottom:10}}>
               <div style={{fontSize:13,fontWeight:700,color:inUse?"#06B6D4":"#22C55E"}}>{inUse?"🚗 مستخدمة":"✅ غير مستخدمة"}</div>
@@ -353,7 +357,7 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers,savedRece
         <div style={{fontSize:11,color:t.textDim,marginBottom:4}}>تم التسليم إلى</div>
         <select value="" onChange={e=>{if(e.target.value)setReceiver(e.target.value);}} style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:"inherit",borderRadius:6,padding:"8px",fontSize:12,fontFamily:"inherit",outline:"none",marginBottom:8}}>
           <option value="" style={selectOpt}>— اختر من القائمة —</option>
-          {savedReceivers.map((n,i)=><option key={i} value={n} style={selectOpt}>{n}</option>)}
+          {savedReceivers.filter(n=>n&&n.trim()).map((n,i)=><option key={i} value={n} style={selectOpt}>{n}</option>)}
         </select>
         <Input value={receiver} onChange={setReceiver} placeholder="أو اكتب اسم جديد" style={{marginBottom:8}}/>
         <div style={{fontSize:11,color:t.textDim,marginBottom:12}}>⏰ سيتم تسجيل الوقت الحالي تلقائياً</div>
@@ -386,14 +390,20 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers,savedRece
           </div>
         ))}</div>}
         <div style={{fontSize:13,fontWeight:700,color:t.textMuted,marginBottom:8,marginTop:16,borderTop:`1px solid ${t.border}`,paddingTop:12}}>مستلمو المفاتيح</div>
-        {savedReceivers.length===0?<div style={{fontSize:12,color:t.textDim,padding:10,textAlign:"center"}}>لا يوجد</div>:
-        <div>{savedReceivers.map((n,i)=>(
+        {savedReceivers.filter(n=>n&&n.trim()).length===0?<div style={{fontSize:12,color:t.textDim,padding:10,textAlign:"center"}}>لا يوجد</div>:
+        <div>{savedReceivers.filter(n=>n&&n.trim()).map((n,i)=>(
           <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",borderRadius:8,background:t.bgCard,border:`1px solid ${t.border}`,marginBottom:4}}>
             <div style={{fontSize:13,fontWeight:600}}>{n}</div>
-            <button onClick={()=>onSaveReceivers(savedReceivers.filter((_,j)=>j!==i))} style={{background:"rgba(239,68,68,0.15)",border:"none",color:"#EF4444",borderRadius:6,padding:"4px 8px",fontSize:10,cursor:"pointer",fontFamily:"inherit"}}>🗑️</button>
+            <button onClick={()=>onSaveReceivers(savedReceivers.filter(x=>x!==n))} style={{background:"rgba(239,68,68,0.15)",border:"none",color:"#EF4444",borderRadius:6,padding:"4px 8px",fontSize:10,cursor:"pointer",fontFamily:"inherit"}}>🗑️</button>
           </div>
         ))}</div>}
       </Modal>
+
+      {/* Image preview */}
+      {previewImg&&<div onClick={()=>setPreviewImg(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",backdropFilter:"blur(10px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:10000,cursor:"pointer",padding:20}}>
+        <img src={previewImg} alt="" style={{maxWidth:"90vw",maxHeight:"85vh",objectFit:"contain",borderRadius:12,boxShadow:"0 8px 40px rgba(0,0,0,0.5)"}}/>
+        <div style={{position:"absolute",top:20,right:20,background:"rgba(255,255,255,0.15)",borderRadius:"50%",width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,color:"#fff"}}>✕</div>
+      </div>}
     </div>
   );
 };
