@@ -78,6 +78,47 @@ export const listenToSavedNames = (key, callback) => {
   return onSnapshot(doc(db, "savedNames", key), (snap) => { if (snap.exists()) callback(snap.data().names); });
 };
 
+// ═══════ CAR REQUESTS (public form, no login) ═══════
+export const saveCarRequest = async (data) => {
+  try {
+    const id = `REQ-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+    await setDoc(doc(db, "carRequests", id), { ...data, id, createdAt: Date.now() });
+    return id;
+  } catch (e) { console.error("saveCarRequest:", e); return null; }
+};
+export const listenToCarRequests = (callback) => {
+  return onSnapshot(collection(db, "carRequests"), (snap) => {
+    const reqs = []; snap.forEach((d) => reqs.push({ ...d.data(), id: d.id }));
+    reqs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    callback(reqs);
+  });
+};
+export const closeCarRequest = async (reqId, requestData) => {
+  try {
+    // Move to log
+    await setDoc(doc(db, "carRequestsLog", reqId), { ...requestData, closedAt: Date.now() });
+    // Delete from active
+    await deleteDoc(doc(db, "carRequests", reqId));
+  } catch (e) { console.error("closeCarRequest:", e); }
+};
+export const listenToCarRequestsLog = (callback) => {
+  return onSnapshot(collection(db, "carRequestsLog"), (snap) => {
+    const logs = []; snap.forEach((d) => logs.push({ ...d.data(), id: d.id }));
+    logs.sort((a, b) => (b.closedAt || 0) - (a.closedAt || 0));
+    callback(logs);
+  });
+};
+
+// ═══════ COMMITTEES (manageable list) ═══════
+export const saveCommittees = async (committees) => {
+  try { await setDoc(doc(db, "settings", "committees"), { list: committees }); } catch (e) { console.error("saveCommittees:", e); }
+};
+export const listenToCommittees = (callback) => {
+  return onSnapshot(doc(db, "settings", "committees"), (snap) => {
+    if (snap.exists()) callback(snap.data().list || []);
+  });
+};
+
 // ═══════ IMAGE UPLOAD ═══════
 export const uploadImage = async (path, file) => {
   try {

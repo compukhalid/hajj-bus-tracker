@@ -3,7 +3,9 @@ import {
   saveBusData, saveBusConfigs, saveSettings,
   listenToAllBuses, listenToBusConfigs, listenToSettings,
   saveCar, deleteCar as deleteCarFb, listenToCars, addCarHistory, listenToCarHistory,
-  saveCarTracking, listenToCarTracking, saveSavedNames, listenToSavedNames, uploadImage
+  saveCarTracking, listenToCarTracking, saveSavedNames, listenToSavedNames, uploadImage,
+  saveCarRequest, listenToCarRequests, closeCarRequest, listenToCarRequestsLog,
+  saveCommittees, listenToCommittees
 } from "./firebase";
 
 /* ═══════ CONSTANTS ═══════ */
@@ -27,6 +29,35 @@ const INITIAL_BUS_DATA = INITIAL_BUSES.map(b => ({
 
 let _pid = Date.now(); const nid = () => `P${++_pid}`;
 
+/* ═══════ DEFAULT COMMITTEES ═══════ */
+const DEFAULT_COMMITTEES = [
+  "الإدارة",
+  "لجنة البرامج والإرشاد",
+  "لجنة التغذية والضيافة",
+  "لجنة الدعم والمساندة",
+  "لجنة المعلومات",
+  "لجنة التفويج والطريق",
+  "اللجنة النسائية",
+  "اللجنة الإعلامية"
+];
+
+/* ═══════ MAP TILE STYLES (free, no API key needed) ═══════ */
+const MAP_STYLES = {
+  voyager: { name: "🗺️ شوارع فاتحة", url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", attribution: "© OpenStreetMap © CARTO", maxZoom: 19 },
+  dark:    { name: "🌙 شوارع داكنة", url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", attribution: "© OpenStreetMap © CARTO", maxZoom: 19 },
+  satellite:{ name: "🛰️ قمر صناعي", url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", attribution: "© Esri", maxZoom: 19 },
+  osm:     { name: "📍 خريطة عادية", url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", attribution: "© OpenStreetMap", maxZoom: 19 }
+};
+const getMapStyle = () => { try { return localStorage.getItem("hbt_mapstyle") || "voyager"; } catch (e) { return "voyager"; } };
+const setMapStyleStorage = (s) => { try { localStorage.setItem("hbt_mapstyle", s); } catch (e) {} };
+
+/* ═══════ CAR COLORS (consistent across map markers and cards) ═══════ */
+const CAR_COLORS = ["#06B6D4","#F59E0B","#EF4444","#22C55E","#8B5CF6","#EC4899","#3B82F6","#10B981","#F97316","#A855F7","#14B8A6","#FBBF24","#DC2626","#84CC16","#0EA5E9"];
+const getCarColor = (carId, allCars) => {
+  const idx = allCars.findIndex(c => c.id === carId);
+  return CAR_COLORS[(idx < 0 ? 0 : idx) % CAR_COLORS.length];
+};
+
 /* ═══════ THEMES ═══════ */
 const THEMES = {
   dark: { bg:"#0F172A",bgCard:"rgba(255,255,255,0.04)",bgCardHover:"rgba(255,255,255,0.08)",bgInput:"rgba(255,255,255,0.06)",bgTopBar:"rgba(15,23,42,0.95)",text:"#F1F5F9",textMuted:"#94A3B8",textDim:"#64748B",border:"rgba(255,255,255,0.08)",borderInput:"rgba(255,255,255,0.12)",borderTopBar:"rgba(255,255,255,0.06)",modalBg:"#1E293B",modalBorder:"rgba(255,255,255,0.1)",loginBg:"linear-gradient(180deg,#0B1120 0%,#152238 50%,#0F172A 100%)",loginCard:"rgba(30,41,59,0.7)",loginInput:"rgba(15,23,42,0.8)",scrollThumb:"rgba(255,255,255,0.1)" },
@@ -37,7 +68,7 @@ const setThemeStorage=(t)=>{try{localStorage.setItem("hbt_theme",t)}catch(e){}};
 
 /* ═══════ LEAFLET ═══════ */
 const useLeaflet=()=>{const[r,setR]=useState(false);useEffect(()=>{if(window.L){setR(true);return;}if(!document.getElementById("lf-css")){const l=document.createElement("link");l.id="lf-css";l.rel="stylesheet";l.href=LEAFLET_CSS;document.head.appendChild(l);}if(!document.getElementById("lf-js")){const s=document.createElement("script");s.id="lf-js";s.src=LEAFLET_JS;s.onload=()=>setR(true);document.head.appendChild(s);}else{if(window.L)setR(true);else document.getElementById("lf-js").addEventListener("load",()=>setR(true));}},[]); return r;};
-const mkIcon=(color,status)=>{if(!window.L)return null;const sc=status==="commuting"?"#22C55E":status==="boarding"?"#C8A951":"#EF4444";return window.L.divIcon({className:"",iconSize:[40,40],iconAnchor:[20,20],html:`<svg width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="11" fill="${color}" stroke="#fff" stroke-width="2.5"/><circle cx="20" cy="20" r="4" fill="#fff"/><circle cx="30" cy="10" r="5" fill="${sc}" stroke="#fff" stroke-width="1.5"/></svg>`});};
+const mkIcon=(color,status,labelChar)=>{if(!window.L)return null;const sc=status==="commuting"?"#22C55E":status==="boarding"?"#C8A951":"#EF4444";const lbl=labelChar?`<text x="20" y="24" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="900" fill="#fff">${labelChar}</text>`:`<circle cx="20" cy="20" r="4" fill="#fff"/>`;return window.L.divIcon({className:"",iconSize:[40,40],iconAnchor:[20,20],html:`<svg width="40" height="40" viewBox="0 0 40 40" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4))"><circle cx="20" cy="20" r="12" fill="${color}" stroke="#fff" stroke-width="3"/>${lbl}<circle cx="30" cy="10" r="5" fill="${sc}" stroke="#fff" stroke-width="1.5"/></svg>`});};
 
 /* ═══════ UI COMPONENTS ═══════ */
 const StatusPill=({status})=>{const c={stopped:["rgba(239,68,68,0.12)","#EF4444"],commuting:["rgba(34,197,94,0.12)","#22C55E"],boarding:["rgba(200,169,81,0.15)","#C8A951"]}[status];return<span style={{display:"inline-flex",alignItems:"center",padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,background:c[0],color:c[1]}}>● {STATUS_AR[status]}</span>;};
@@ -88,6 +119,7 @@ const LoginPage=({onLogin,settings,busConfigs,theme,toggleTheme})=>{
         <button onClick={go} style={{width:"100%",padding:16,borderRadius:12,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#C8A951,#A67C2E)",color:"#0B1120",fontSize:20,fontWeight:800,marginTop:16,fontFamily:"inherit"}}>دخول</button>
       </div>
       <button onClick={()=>{setMode(mode==="supervisor"?"admin":"supervisor");setPin("");setError("");}} style={{background:"none",border:"none",color:t.textDim,fontSize:14,marginTop:24,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}>{mode==="supervisor"?"دخول الإدارة / مشرف السيارات":"دخول المشرف"}</button>
+      <a href="/request-car" style={{marginTop:16,padding:"12px 24px",borderRadius:12,border:"1px solid rgba(200,169,81,0.4)",background:"rgba(200,169,81,0.1)",color:"#C8A951",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",textDecoration:"none",display:"inline-flex",alignItems:"center",gap:8}}>🚗 طلب وسيلة نقل</a>
       <div style={{marginTop:32,fontSize:13,color:t.textDim,textAlign:"center",opacity:0.7}}>برمجة وتصميم / خالد محمود المرزوقي</div>
     </div>
   );
@@ -95,18 +127,54 @@ const LoginPage=({onLogin,settings,busConfigs,theme,toggleTheme})=>{
 
 /* ═══════ MAPS ═══════ */
 const SimpleMap=({locations,height,busConfigs})=>{
-  const ref=useRef(null);const mapRef=useRef(null);const markers=useRef({});const ready=useLeaflet();
+  const ref=useRef(null);const mapRef=useRef(null);const tileRef=useRef(null);const markers=useRef({});const ready=useLeaflet();
+  const[mapStyle,setMapStyle]=useState(getMapStyle);
+  const changeStyle=(s)=>{setMapStyle(s);setMapStyleStorage(s);};
   useEffect(()=>{
     if(!ready||!ref.current||mapRef.current)return;const L=window.L;
-    const m=L.map(ref.current,{center:[26.2235,50.5876],zoom:13,zoomControl:false,attributionControl:false});
-    L.control.zoom({position:"topright"}).addTo(m);L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{maxZoom:19}).addTo(m);mapRef.current=m;
-    const locs=locations.filter(l=>l.lat&&l.lng);
-    locs.forEach(l=>{const ic=mkIcon(l.color||"#C8A951",l.status||"stopped");markers.current[l.id]=L.marker([l.lat,l.lng],{icon:ic}).addTo(m).bindPopup(`<div style="text-align:center;font-family:sans-serif;font-weight:700;">${l.label||""}</div>`);});
-    if(locs.length)m.fitBounds(locs.map(l=>[l.lat,l.lng]),{padding:[40,40],maxZoom:14});
-    return()=>{m.remove();mapRef.current=null;markers.current={};};
+    // Default center: Makkah (21.4225, 39.8262), zoom 12
+    const m=L.map(ref.current,{center:[21.4225,39.8262],zoom:12,zoomControl:false,attributionControl:false});
+    L.control.zoom({position:"topright"}).addTo(m);
+    const st=MAP_STYLES[mapStyle]||MAP_STYLES.voyager;
+    tileRef.current=L.tileLayer(st.url,{maxZoom:st.maxZoom,attribution:st.attribution}).addTo(m);
+    mapRef.current=m;
+    return()=>{m.remove();mapRef.current=null;tileRef.current=null;markers.current={};};
   },[ready]);
-  useEffect(()=>{if(!mapRef.current||!ready)return;locations.forEach(l=>{const mk=markers.current[l.id];if(mk&&l.lat&&l.lng){mk.setLatLng([l.lat,l.lng]);mk.setIcon(mkIcon(l.color||"#C8A951",l.status||"stopped"));}});},[locations,ready]);
-  return(<div style={{position:"relative",borderRadius:16,overflow:"hidden",border:"1px solid rgba(255,255,255,0.08)",marginBottom:20}}><div ref={ref} style={{width:"100%",height:height||300}}/>{!ready&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(15,23,42,0.95)",color:"#64748B",fontSize:13}}>جاري التحميل...</div>}</div>);
+  // Change tile layer when mapStyle changes
+  useEffect(()=>{
+    if(!mapRef.current||!tileRef.current||!window.L)return;
+    mapRef.current.removeLayer(tileRef.current);
+    const st=MAP_STYLES[mapStyle]||MAP_STYLES.voyager;
+    tileRef.current=window.L.tileLayer(st.url,{maxZoom:st.maxZoom,attribution:st.attribution}).addTo(mapRef.current);
+  },[mapStyle]);
+  // Sync markers (add/update/remove) and fit bounds
+  useEffect(()=>{
+    if(!mapRef.current||!ready)return;const L=window.L;const m=mapRef.current;
+    const locs=locations.filter(l=>l.lat&&l.lng);
+    const currentIds=new Set(locs.map(l=>String(l.id)));
+    // Remove stale markers
+    Object.keys(markers.current).forEach(id=>{if(!currentIds.has(id)){m.removeLayer(markers.current[id]);delete markers.current[id];}});
+    // Add or update
+    locs.forEach(l=>{
+      const id=String(l.id);const ic=mkIcon(l.color||"#C8A951",l.status||"stopped",l.markerChar);
+      const popupHtml=`<div style="text-align:center;font-family:'IBM Plex Sans Arabic',sans-serif;direction:rtl;min-width:120px;"><div style="font-weight:800;font-size:14px;color:${l.color||"#0F172A"};border-bottom:2px solid ${l.color||"#0F172A"};padding-bottom:4px;margin-bottom:4px;">${l.label||""}</div>${l.subLabel?`<div style="font-size:11px;color:#64748B;margin-top:4px;">${l.subLabel}</div>`:""}</div>`;
+      if(markers.current[id]){markers.current[id].setLatLng([l.lat,l.lng]);markers.current[id].setIcon(ic);markers.current[id].setPopupContent(popupHtml);}
+      else{markers.current[id]=L.marker([l.lat,l.lng],{icon:ic}).addTo(m).bindPopup(popupHtml,{closeButton:true,autoClose:false,closeOnClick:false});}
+    });
+    if(locs.length>0){m.fitBounds(locs.map(l=>[l.lat,l.lng]),{padding:[50,50],maxZoom:15});}
+  },[locations,ready]);
+  return(
+    <div style={{position:"relative",borderRadius:16,overflow:"hidden",border:"1px solid rgba(255,255,255,0.08)",marginBottom:20}}>
+      <div ref={ref} style={{width:"100%",height:height||300}}/>
+      {/* Map style switcher */}
+      {ready&&<div style={{position:"absolute",top:10,left:10,zIndex:500,display:"flex",flexDirection:"column",gap:4,background:"rgba(15,23,42,0.85)",backdropFilter:"blur(8px)",padding:6,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)"}}>
+        {Object.keys(MAP_STYLES).map(k=>(
+          <button key={k} onClick={()=>changeStyle(k)} title={MAP_STYLES[k].name} style={{background:mapStyle===k?"rgba(200,169,81,0.25)":"transparent",border:mapStyle===k?"1px solid #C8A951":"1px solid transparent",color:mapStyle===k?"#C8A951":"#94A3B8",borderRadius:6,padding:"4px 8px",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:600,textAlign:"right",whiteSpace:"nowrap"}}>{MAP_STYLES[k].name}</button>
+        ))}
+      </div>}
+      {!ready&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(15,23,42,0.95)",color:"#64748B",fontSize:13}}>جاري التحميل...</div>}
+    </div>
+  );
 };
 
 /* ═══════ ADMIN: PILGRIM MGMT (unchanged from before, compact) ═══════ */
@@ -196,8 +264,115 @@ const BusMgmtPage=({busConfigs,onUpdate,settings,onUpdateSettings,onBack,t})=>{
   );
 };
 
+/* ═══════ CAR REQUESTS LIST (inside supervisor page) ═══════ */
+const CarRequestsList=({requests,onClose,t,readOnly})=>{
+  const[confirmId,setConfirmId]=useState(null);
+  if(!requests||requests.length===0){
+    return(<div style={{padding:30,textAlign:"center",color:t.textDim,fontSize:13,background:t.bgCard,borderRadius:12,border:`1px solid ${t.border}`}}>لا توجد طلبات حالياً</div>);
+  }
+  const fmtDateTime=(s)=>{if(!s)return"—";try{const d=new Date(s);return d.toLocaleString("ar-BH",{dateStyle:"medium",timeStyle:"short"});}catch(e){return s;}};
+  const fmtCreated=(ts)=>{if(!ts)return"";const d=new Date(ts);return d.toLocaleString("ar-BH",{dateStyle:"short",timeStyle:"short"});};
+  return(
+    <div>
+      <div style={{display:"grid",gap:10}}>
+        {requests.map(r=>(
+          <div key={r.id} style={{padding:14,borderRadius:12,background:t.bgCard,border:`1px solid ${t.border}`,borderRight:"3px solid #C8A951"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:8,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:200}}>
+                <div style={{fontSize:15,fontWeight:800,color:t.text}}>{r.name}</div>
+                <div style={{fontSize:11,color:"#C8A951",fontWeight:600,marginTop:2}}>{r.committee}</div>
+              </div>
+              <div style={{fontSize:10,color:t.textDim,textAlign:"left"}}>وصل: {fmtCreated(r.createdAt)}</div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8,marginBottom:10}}>
+              <div style={{background:"rgba(255,255,255,0.03)",borderRadius:8,padding:"8px 10px"}}>
+                <div style={{fontSize:10,color:t.textDim,marginBottom:2}}>📱 الجوال</div>
+                <a href={`tel:${r.phone}`} style={{fontSize:13,color:"#60A5FA",textDecoration:"none",fontWeight:600,direction:"ltr",display:"inline-block"}}>{r.phone}</a>
+              </div>
+              <div style={{background:"rgba(255,255,255,0.03)",borderRadius:8,padding:"8px 10px"}}>
+                <div style={{fontSize:10,color:t.textDim,marginBottom:2}}>📅 اليوم والوقت</div>
+                <div style={{fontSize:12,color:t.text,fontWeight:600}}>{fmtDateTime(r.dateTime)}</div>
+              </div>
+              <div style={{background:"rgba(255,255,255,0.03)",borderRadius:8,padding:"8px 10px"}}>
+                <div style={{fontSize:10,color:t.textDim,marginBottom:2}}>📍 الوجهة</div>
+                <div style={{fontSize:12,color:t.text,fontWeight:600}}>{r.destination}</div>
+              </div>
+              <div style={{background:"rgba(255,255,255,0.03)",borderRadius:8,padding:"8px 10px"}}>
+                <div style={{fontSize:10,color:t.textDim,marginBottom:2}}>⏱️ المدة</div>
+                <div style={{fontSize:12,color:t.text,fontWeight:600}}>{r.duration}</div>
+              </div>
+            </div>
+            {r.notes&&<div style={{background:"rgba(200,169,81,0.08)",borderRadius:8,padding:"8px 10px",marginBottom:10,border:"1px solid rgba(200,169,81,0.15)"}}>
+              <div style={{fontSize:10,color:"#C8A951",marginBottom:2,fontWeight:700}}>📝 معلومات أخرى</div>
+              <div style={{fontSize:12,color:t.text,whiteSpace:"pre-wrap"}}>{r.notes}</div>
+            </div>}
+            {!readOnly&&<Btn onClick={()=>setConfirmId(r.id)} color="#22C55E" small style={{width:"100%"}}>✅ إغلاق الحالة</Btn>}
+          </div>
+        ))}
+      </div>
+      <Modal open={!!confirmId} onClose={()=>setConfirmId(null)} title="تأكيد إغلاق الحالة" t={t}>
+        <div style={{fontSize:14,marginBottom:20,color:t.textMuted}}>سيتم نقل هذا الطلب إلى السجل. هل تريد المتابعة؟</div>
+        <div style={{display:"flex",gap:8}}>
+          <Btn onClick={()=>setConfirmId(null)} color="transparent" style={{flex:1,border:`1px solid ${t.border}`,color:t.textMuted}}>إلغاء</Btn>
+          <Btn onClick={()=>{const r=requests.find(x=>x.id===confirmId);if(r)onClose(r);setConfirmId(null);}} color="#22C55E" style={{flex:1}}>✅ نعم، أغلق</Btn>
+        </div>
+      </Modal>
+    </div>
+  );
+};
+
+/* ═══════ CAR REQUESTS LOG (closed cases) ═══════ */
+const CarRequestsLogView=({logs,t})=>{
+  if(!logs||logs.length===0){
+    return(<div style={{padding:30,textAlign:"center",color:t.textDim,fontSize:13,background:t.bgCard,borderRadius:12,border:`1px solid ${t.border}`}}>السجل فارغ</div>);
+  }
+  const fmt=(ts)=>ts?new Date(ts).toLocaleString("ar-BH",{dateStyle:"short",timeStyle:"short"}):"—";
+  return(
+    <div style={{display:"grid",gap:8}}>
+      {logs.map(r=>(
+        <div key={r.id} style={{padding:12,borderRadius:10,background:t.bgCard,border:`1px solid ${t.border}`,opacity:0.85}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:6}}>
+            <div style={{fontSize:14,fontWeight:700}}>{r.name} <span style={{fontSize:11,color:"#C8A951",fontWeight:500}}>• {r.committee}</span></div>
+            <div style={{fontSize:10,color:"#22C55E"}}>✅ أُغلق: {fmt(r.closedAt)}</div>
+          </div>
+          <div style={{fontSize:11,color:t.textMuted,display:"flex",gap:12,flexWrap:"wrap"}}>
+            <span>📱 {r.phone}</span>
+            <span>📅 {r.dateTime?new Date(r.dateTime).toLocaleString("ar-BH",{dateStyle:"short",timeStyle:"short"}):"—"}</span>
+            <span>📍 {r.destination}</span>
+            <span>⏱️ {r.duration}</span>
+          </div>
+          {r.notes&&<div style={{fontSize:11,color:t.textDim,marginTop:4,fontStyle:"italic"}}>📝 {r.notes}</div>}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* ═══════ COMMITTEE MANAGER ═══════ */
+const CommitteeManager=({committees,onSave,t})=>{
+  const[newC,setNewC]=useState("");
+  const add=()=>{if(!newC.trim()||committees.includes(newC.trim()))return;onSave([...committees,newC.trim()]);setNewC("");};
+  const remove=(c)=>{onSave(committees.filter(x=>x!==c));};
+  return(
+    <div>
+      <div style={{display:"flex",gap:6,marginBottom:12}}>
+        <Input value={newC} onChange={setNewC} placeholder="اسم اللجنة الجديدة"/>
+        <Btn onClick={add} disabled={!newC.trim()} color="#22C55E" small>+ إضافة</Btn>
+      </div>
+      <div style={{display:"grid",gap:4,maxHeight:300,overflowY:"auto"}}>
+        {committees.map(c=>(
+          <div key={c} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",borderRadius:8,background:t.bgCard,border:`1px solid ${t.border}`}}>
+            <span style={{fontSize:13}}>{c}</span>
+            <button onClick={()=>remove(c)} style={{background:"rgba(239,68,68,0.15)",border:"none",color:"#EF4444",borderRadius:6,padding:"4px 8px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>🗑️</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 /* ═══════ CAR MANAGEMENT ═══════ */
-const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers:rawSavedUsers,savedReceivers,onSaveUsers,onSaveReceivers,onBack,t,readOnly,baseUrl})=>{
+const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers:rawSavedUsers,savedReceivers,onSaveUsers,onSaveReceivers,onBack,t,readOnly,baseUrl,carRequests,carRequestsLog,onCloseRequest,committees,onSaveCommittees})=>{
   const[addModal,setAddModal]=useState(false);const[carNum,setCarNum]=useState("");const[plate,setPlate]=useState("");const[driver,setDriver]=useState("");
   const[driverImg,setDriverImg]=useState(null);const[carImg,setCarImg]=useState(null);const[uploading,setUploading]=useState(false);
   const[useModal,setUseModal]=useState(null);const[userName,setUserName]=useState("");const[userPhone,setUserPhone]=useState("");
@@ -205,6 +380,13 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers:rawSavedU
   const[histModal,setHistModal]=useState(null);const[history,setHistory]=useState([]);
   const[manageSavedModal,setManageSavedModal]=useState(false);
   const[previewImg,setPreviewImg]=useState(null);
+  const[tab,setTab]=useState("cars"); // cars | requests | log
+  const[committeeMgrOpen,setCommitteeMgrOpen]=useState(false);
+  // Edit car modal state
+  const[editModal,setEditModal]=useState(null);
+  const[edCarNum,setEdCarNum]=useState("");const[edPlate,setEdPlate]=useState("");const[edDriver,setEdDriver]=useState("");
+  const[edDriverImg,setEdDriverImg]=useState(null);const[edCarImg,setEdCarImg]=useState(null);
+  const[edUploading,setEdUploading]=useState(false);
   // Real-time car tracking locations
   const[carTrackingLocs,setCarTrackingLocs]=useState({});
 
@@ -267,43 +449,91 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers:rawSavedU
   const trackingUrl=(trackingId)=>`${baseUrl}/track/${trackingId}`;
   const copyText=(text)=>{const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);};
 
-  // Map locations from real tracking data
+  const openEdit=(car)=>{
+    if(readOnly)return;
+    setEditModal(car);
+    setEdCarNum(car.carNumber||"");
+    setEdPlate(car.plate||"");
+    setEdDriver(car.driverName||"");
+    setEdDriverImg(null);setEdCarImg(null);
+  };
+  const saveEdit=async()=>{
+    if(!editModal||!edCarNum.trim())return;
+    setEdUploading(true);
+    let dUrl=editModal.driverImage||"";let cUrl=editModal.carImage||"";
+    if(edDriverImg){const u=await uploadImage(`cars/${Date.now()}_driver`,edDriverImg);if(u)dUrl=u;}
+    if(edCarImg){const u=await uploadImage(`cars/${Date.now()}_car`,edCarImg);if(u)cUrl=u;}
+    await onSaveCar(editModal.id,{...editModal,carNumber:edCarNum.trim(),plate:edPlate.trim(),driverName:edDriver.trim(),driverImage:dUrl,carImage:cUrl});
+    setEdUploading(false);setEditModal(null);
+  };
+
+  // Map locations from real tracking data — all in-use cars with location
+  // Each car has a consistent color (shared with its card border) and a marker char (last digit of car number for quick recognition)
   const carLocations=cars.filter(c=>c.status==="in-use").map(c=>{
     const loc=carTrackingLocs[c.id];
     if(!loc) return null;
-    return {id:c.id,lat:loc.lat,lng:loc.lng,color:"#06B6D4",status:"commuting",label:c.carNumber};
+    const color=getCarColor(c.id,cars);
+    // Extract last 1-2 digits/chars from carNumber for marker (e.g., "ABC-123" -> "23")
+    const numStr=String(c.carNumber||"").replace(/[^\d]/g,"");
+    const markerChar=numStr.slice(-2)||String(c.carNumber||"").slice(-2)||"•";
+    return {id:c.id,lat:loc.lat,lng:loc.lng,color,status:"commuting",label:`🚗 ${c.carNumber}`,subLabel:c.currentUser?.name?`المستخدم: ${c.currentUser.name}`:"",markerChar};
   }).filter(Boolean);
 
   const selectOpt={background:"#1E293B",color:"#F1F5F9"};
+  const openRequestsCount=(carRequests||[]).length;
 
   return(
     <div>
-      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,flexWrap:"wrap"}}>
         <button onClick={onBack} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:t.textMuted,borderRadius:10,padding:"8px 14px",cursor:"pointer",fontSize:14,fontWeight:600,fontFamily:"inherit"}}>→ رجوع</button>
-        <div style={{flex:1}}><div style={{fontSize:20,fontWeight:800}}>🚗 إدارة السيارات</div><div style={{fontSize:12,color:t.textDim}}>{cars.length} سيارة — {cars.filter(c=>c.status==="in-use").length} مستخدمة</div></div>
-        <div style={{display:"flex",gap:6}}>
-          {!readOnly&&<Btn onClick={()=>setManageSavedModal(true)} color="#8B5CF6" small>📇 المستخدمون</Btn>}
-          {!readOnly&&<Btn onClick={()=>setAddModal(true)} color="#06B6D4" small>+ سيارة</Btn>}
+        <div style={{flex:1,minWidth:140}}><div style={{fontSize:20,fontWeight:800}}>🚗 إدارة السيارات</div><div style={{fontSize:12,color:t.textDim}}>{cars.length} سيارة — {cars.filter(c=>c.status==="in-use").length} مستخدمة</div></div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {!readOnly&&tab==="cars"&&<Btn onClick={()=>setManageSavedModal(true)} color="#8B5CF6" small>📇 المستخدمون</Btn>}
+          {!readOnly&&tab==="requests"&&<Btn onClick={()=>setCommitteeMgrOpen(true)} color="#8B5CF6" small>🗂️ اللجان</Btn>}
+          {!readOnly&&tab==="cars"&&<Btn onClick={()=>setAddModal(true)} color="#06B6D4" small>+ سيارة</Btn>}
         </div>
       </div>
 
-      {carLocations.length>0&&<SimpleMap locations={carLocations} height={250}/>}
+      {/* Tabs */}
+      <div style={{display:"flex",gap:6,marginBottom:16,background:t.bgCard,padding:6,borderRadius:12,border:`1px solid ${t.border}`}}>
+        <button onClick={()=>setTab("cars")} style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:tab==="cars"?"linear-gradient(135deg,#06B6D4,#0891B2)":"transparent",color:tab==="cars"?"#fff":t.textMuted}}>🚗 السيارات</button>
+        <button onClick={()=>setTab("requests")} style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:tab==="requests"?"linear-gradient(135deg,#C8A951,#A67C2E)":"transparent",color:tab==="requests"?"#fff":t.textMuted,position:"relative"}}>📋 الطلبات{openRequestsCount>0&&<span style={{position:"absolute",top:4,left:4,background:"#EF4444",color:"#fff",fontSize:10,fontWeight:800,borderRadius:10,padding:"1px 6px",minWidth:18}}>{openRequestsCount}</span>}</button>
+        <button onClick={()=>setTab("log")} style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:tab==="log"?"linear-gradient(135deg,#64748B,#475569)":"transparent",color:tab==="log"?"#fff":t.textMuted}}>📚 السجل</button>
+      </div>
+
+      {tab==="requests"&&<CarRequestsList requests={carRequests||[]} onClose={onCloseRequest} t={t} readOnly={readOnly}/>}
+      {tab==="log"&&<CarRequestsLogView logs={carRequestsLog||[]} t={t}/>}
+      {tab==="cars"&&<>
+      {carLocations.length>0&&<SimpleMap locations={carLocations} height={300}/>}
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:12}}>
-        {cars.map(car=>{const inUse=car.status==="in-use";const loc=carTrackingLocs[car.id];return(
-          <div key={car.id} style={{background:t.bgCard,borderRadius:14,border:`1px solid ${inUse?"rgba(6,182,212,0.3)":t.border}`,padding:16,position:"relative",overflow:"hidden"}}>
-            <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:inUse?"#06B6D4":"#64748B"}}/>
-            <div style={{display:"flex",gap:12,marginBottom:12}}>
+        {cars.map(car=>{const inUse=car.status==="in-use";const loc=carTrackingLocs[car.id];
+          const carColor=getCarColor(car.id,cars);
+          // For cars in-use: border uses the unique car color (matches map marker). For available: muted color.
+          const borderColor=inUse?carColor:t.border;
+          const borderWidth=inUse?"2px":"1px";
+          // Soft tinted background that picks up the car color
+          const cardBg=inUse?`linear-gradient(135deg, ${carColor}10, ${carColor}05)`:t.bgCard;
+          return(
+          <div key={car.id} style={{background:cardBg,borderRadius:14,border:`${borderWidth} solid ${borderColor}`,padding:16,position:"relative",overflow:"hidden",boxShadow:inUse?`0 4px 16px ${carColor}25`:"none",transition:"all 0.2s"}}>
+            {/* Top stripe in car's color */}
+            <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:carColor}}/>
+            {/* Edit button — top-left corner */}
+            {!readOnly&&<button onClick={(e)=>{e.stopPropagation();openEdit(car);}} title="تعديل معلومات السيارة" style={{position:"absolute",top:8,left:8,background:"rgba(59,130,246,0.18)",border:"1px solid rgba(59,130,246,0.35)",color:"#60A5FA",borderRadius:8,padding:"4px 8px",fontSize:11,cursor:"pointer",fontFamily:"inherit",zIndex:2,fontWeight:700}}>✏️ تعديل</button>}
+            <div style={{display:"flex",gap:12,marginBottom:12,marginTop:!readOnly?8:0}}>
               {car.carImage&&<img src={car.carImage} alt="" onClick={(e)=>{e.stopPropagation();setPreviewImg(car.carImage);}} style={{width:60,height:45,objectFit:"cover",borderRadius:8,border:`1px solid ${t.border}`,cursor:"pointer"}}/>}
               <div style={{flex:1}}>
-                <div style={{fontSize:16,fontWeight:800}}>{car.carNumber}</div>
-                <div style={{fontSize:11,color:t.textDim}}>لوحة: {car.plate}</div>
-                <div style={{fontSize:11,color:t.textDim}}>السائق: {car.driverName}</div>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  {inUse&&<div style={{width:10,height:10,borderRadius:"50%",background:carColor,boxShadow:`0 0 8px ${carColor}`}}/>}
+                  <div style={{fontSize:16,fontWeight:800}}>{car.carNumber}</div>
+                </div>
+                <div style={{fontSize:11,color:t.textDim}}>لوحة: {car.plate||"—"}</div>
+                <div style={{fontSize:11,color:t.textDim}}>السائق: {car.driverName||"—"}</div>
               </div>
               {car.driverImage&&<img src={car.driverImage} alt="" onClick={(e)=>{e.stopPropagation();setPreviewImg(car.driverImage);}} style={{width:40,height:40,objectFit:"cover",borderRadius:"50%",border:`2px solid ${t.border}`,cursor:"pointer"}}/>}
             </div>
-            <div style={{padding:"8px 12px",borderRadius:8,background:inUse?"rgba(6,182,212,0.1)":"rgba(34,197,94,0.1)",border:`1px solid ${inUse?"rgba(6,182,212,0.2)":"rgba(34,197,94,0.2)"}`,marginBottom:10}}>
-              <div style={{fontSize:13,fontWeight:700,color:inUse?"#06B6D4":"#22C55E"}}>{inUse?"🚗 مستخدمة":"✅ غير مستخدمة"}</div>
+            <div style={{padding:"8px 12px",borderRadius:8,background:inUse?`${carColor}18`:"rgba(34,197,94,0.1)",border:`1px solid ${inUse?carColor+"40":"rgba(34,197,94,0.2)"}`,marginBottom:10}}>
+              <div style={{fontSize:13,fontWeight:700,color:inUse?carColor:"#22C55E"}}>{inUse?"🚗 مستخدمة":"✅ غير مستخدمة"}</div>
               {inUse&&car.currentUser&&(<div style={{marginTop:6}}>
                 <div style={{fontSize:12}}>المستخدم: {car.currentUser.name}</div>
                 {car.currentUser.phone&&<a href={`tel:${car.currentUser.phone}`} style={{fontSize:12,color:"#60A5FA",textDecoration:"none"}}>📱 {car.currentUser.phone}</a>}
@@ -322,6 +552,7 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers:rawSavedU
           </div>
         );})}
       </div>
+      </>}
 
       {/* Add car modal */}
       <Modal open={addModal} onClose={()=>setAddModal(false)} title="+ إضافة سيارة" t={t}>
@@ -397,6 +628,39 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers:rawSavedU
             <button onClick={()=>onSaveReceivers(savedReceivers.filter(x=>x!==n))} style={{background:"rgba(239,68,68,0.15)",border:"none",color:"#EF4444",borderRadius:6,padding:"4px 8px",fontSize:10,cursor:"pointer",fontFamily:"inherit"}}>🗑️</button>
           </div>
         ))}</div>}
+      </Modal>
+
+      {/* Edit car modal */}
+      <Modal open={!!editModal} onClose={()=>setEditModal(null)} title="✏️ تعديل معلومات السيارة" t={t}>
+        {editModal&&<>
+          <div style={{fontSize:11,color:t.textDim,marginBottom:4}}>رقم السيارة</div>
+          <Input value={edCarNum} onChange={setEdCarNum} placeholder="رقم السيارة" style={{marginBottom:8}}/>
+          <div style={{fontSize:11,color:t.textDim,marginBottom:4}}>رقم اللوحة</div>
+          <Input value={edPlate} onChange={setEdPlate} placeholder="رقم اللوحة" style={{marginBottom:8}}/>
+          <div style={{fontSize:11,color:t.textDim,marginBottom:4}}>اسم السائق</div>
+          <Input value={edDriver} onChange={setEdDriver} placeholder="اسم السائق" style={{marginBottom:12}}/>
+
+          <div style={{fontSize:11,color:t.textDim,marginBottom:4}}>صورة السائق الحالية</div>
+          <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
+            {editModal.driverImage?<img src={editModal.driverImage} alt="" style={{width:44,height:44,objectFit:"cover",borderRadius:"50%",border:`2px solid ${t.border}`}}/>:<div style={{width:44,height:44,borderRadius:"50%",background:t.bgCard,border:`1px dashed ${t.border}`,display:"flex",alignItems:"center",justifyContent:"center",color:t.textDim,fontSize:10}}>لا توجد</div>}
+            <input type="file" accept="image/*" onChange={e=>setEdDriverImg(e.target.files[0])} style={{flex:1,fontSize:11,color:"inherit"}}/>
+          </div>
+          <div style={{fontSize:11,color:t.textDim,marginBottom:4}}>صورة السيارة الحالية</div>
+          <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:14}}>
+            {editModal.carImage?<img src={editModal.carImage} alt="" style={{width:64,height:48,objectFit:"cover",borderRadius:8,border:`1px solid ${t.border}`}}/>:<div style={{width:64,height:48,borderRadius:8,background:t.bgCard,border:`1px dashed ${t.border}`,display:"flex",alignItems:"center",justifyContent:"center",color:t.textDim,fontSize:10}}>لا توجد</div>}
+            <input type="file" accept="image/*" onChange={e=>setEdCarImg(e.target.files[0])} style={{flex:1,fontSize:11,color:"inherit"}}/>
+          </div>
+          <div style={{fontSize:10,color:t.textDim,marginBottom:12,padding:"6px 10px",background:"rgba(251,191,36,0.08)",borderRadius:6,border:"1px solid rgba(251,191,36,0.2)"}}>💡 اترك حقل الصورة فارغاً للاحتفاظ بالصورة الحالية</div>
+          <div style={{display:"flex",gap:8}}>
+            <Btn onClick={()=>setEditModal(null)} color="transparent" style={{flex:1,border:`1px solid ${t.border}`,color:t.textMuted}}>إلغاء</Btn>
+            <Btn onClick={saveEdit} disabled={!edCarNum.trim()||edUploading} color="#22C55E" style={{flex:2}}>{edUploading?"جاري الحفظ...":"💾 حفظ التعديلات"}</Btn>
+          </div>
+        </>}
+      </Modal>
+
+      {/* Committee manager modal */}
+      <Modal open={committeeMgrOpen} onClose={()=>setCommitteeMgrOpen(false)} title="🗂️ إدارة اللجان" width={500} t={t}>
+        <CommitteeManager committees={committees||DEFAULT_COMMITTEES} onSave={onSaveCommittees} t={t}/>
       </Modal>
 
       {/* Image preview */}
@@ -617,6 +881,79 @@ const FamilyCreator=({unassigned,students,onCreateFamily,t})=>{
   </div>);
 };
 
+/* ═══════ CAR REQUEST PAGE (public, no login) ═══════ */
+const CarRequestPage=()=>{
+  const[committees,setCommittees]=useState(DEFAULT_COMMITTEES);
+  const[name,setName]=useState("");const[phone,setPhone]=useState("");
+  const[committee,setCommittee]=useState("");
+  const[dateTime,setDateTime]=useState("");const[destination,setDestination]=useState("");
+  const[duration,setDuration]=useState("");const[notes,setNotes]=useState("");
+  const[submitting,setSubmitting]=useState(false);const[success,setSuccess]=useState(false);const[error,setError]=useState("");
+  useEffect(()=>{const u=listenToCommittees(list=>{if(list&&list.length)setCommittees(list);});return()=>u();},[]);
+  const submit=async()=>{
+    setError("");
+    if(!name.trim()){setError("الرجاء إدخال الاسم");return;}
+    if(!phone.trim()){setError("الرجاء إدخال رقم الجوال");return;}
+    if(!committee){setError("الرجاء اختيار اللجنة");return;}
+    if(!dateTime){setError("الرجاء اختيار اليوم والوقت");return;}
+    if(!destination.trim()){setError("الرجاء إدخال الوجهة");return;}
+    if(!duration.trim()){setError("الرجاء إدخال المدة");return;}
+    setSubmitting(true);
+    const id=await saveCarRequest({name:name.trim(),phone:phone.trim(),committee,dateTime,destination:destination.trim(),duration:duration.trim(),notes:notes.trim()});
+    setSubmitting(false);
+    if(id){setSuccess(true);setName("");setPhone("");setCommittee("");setDateTime("");setDestination("");setDuration("");setNotes("");}
+    else{setError("حدث خطأ، حاول مرة أخرى");}
+  };
+  const inputStyle={width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.15)",color:"#F1F5F9",borderRadius:10,padding:"12px 14px",fontSize:14,outline:"none",direction:"rtl",boxSizing:"border-box",fontFamily:"inherit",marginBottom:12};
+  const labelStyle={fontSize:13,fontWeight:600,color:"#C8A951",marginBottom:6,display:"block"};
+  if(success){
+    return(
+      <div style={{minHeight:"100vh",background:"linear-gradient(180deg,#0B1120 0%,#152238 50%,#0F172A 100%)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,direction:"rtl",fontFamily:"'IBM Plex Sans Arabic',sans-serif",color:"#F1F5F9"}}>
+        <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800&family=Amiri:wght@700&display=swap" rel="stylesheet"/>
+        <div style={{fontSize:80,marginBottom:20}}>✅</div>
+        <div style={{fontSize:28,fontWeight:800,color:"#22C55E",marginBottom:12,fontFamily:"'Amiri',serif"}}>تم استلام طلبك</div>
+        <div style={{fontSize:15,color:"#94A3B8",textAlign:"center",lineHeight:1.8,maxWidth:400,marginBottom:24}}>سيتم التواصل معك من قِبل مشرف السيارات في أقرب وقت ممكن</div>
+        <button onClick={()=>setSuccess(false)} style={{padding:"12px 28px",borderRadius:10,border:"1px solid rgba(200,169,81,0.4)",background:"rgba(200,169,81,0.15)",color:"#C8A951",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📝 طلب جديد</button>
+      </div>
+    );
+  }
+  return(
+    <div style={{minHeight:"100vh",background:"linear-gradient(180deg,#0B1120 0%,#152238 50%,#0F172A 100%)",padding:"40px 20px",direction:"rtl",fontFamily:"'IBM Plex Sans Arabic',sans-serif",color:"#F1F5F9"}}>
+      <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800&family=Amiri:wght@700&display=swap" rel="stylesheet"/>
+      <div style={{maxWidth:520,margin:"0 auto"}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{fontSize:60,marginBottom:8}}>🚗</div>
+          <div style={{fontSize:32,fontWeight:800,color:"#C8A951",fontFamily:"'Amiri',serif",lineHeight:1.2}}>طلب وسيلة نقل</div>
+          <div style={{width:80,height:3,background:"linear-gradient(90deg,transparent,#C8A951,transparent)",margin:"12px auto"}}/>
+          <div style={{fontSize:14,color:"#94A3B8"}}>املأ البيانات وسيتواصل معك المشرف</div>
+        </div>
+        <div style={{background:"rgba(30,41,59,0.7)",borderRadius:18,border:"1px solid rgba(255,255,255,0.08)",padding:24,backdropFilter:"blur(20px)"}}>
+          <label style={labelStyle}>اسم صاحب الطلب</label>
+          <input value={name} onChange={e=>setName(e.target.value)} placeholder="الاسم الكامل" style={inputStyle}/>
+          <label style={labelStyle}>رقم الجوال</label>
+          <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="مثال: 0501234567" style={inputStyle}/>
+          <label style={labelStyle}>اللجنة</label>
+          <select value={committee} onChange={e=>setCommittee(e.target.value)} style={{...inputStyle,appearance:"none",backgroundImage:"url(\"data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2394A3B8'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e\")",backgroundRepeat:"no-repeat",backgroundPosition:"left 12px center",backgroundSize:"20px",paddingLeft:40}}>
+            <option value="" style={{background:"#1E293B",color:"#F1F5F9"}}>— اختر اللجنة —</option>
+            {committees.map(c=><option key={c} value={c} style={{background:"#1E293B",color:"#F1F5F9"}}>{c}</option>)}
+          </select>
+          <label style={labelStyle}>اليوم والوقت المطلوب</label>
+          <input type="datetime-local" value={dateTime} onChange={e=>setDateTime(e.target.value)} style={{...inputStyle,colorScheme:"dark"}}/>
+          <label style={labelStyle}>الوجهة</label>
+          <input value={destination} onChange={e=>setDestination(e.target.value)} placeholder="مثال: المسجد الحرام" style={inputStyle}/>
+          <label style={labelStyle}>المدة</label>
+          <input value={duration} onChange={e=>setDuration(e.target.value)} placeholder="مثال: ساعة / نصف ساعة" style={inputStyle}/>
+          <label style={labelStyle}>معلومات أخرى <span style={{color:"#64748B",fontWeight:400}}>(اختياري)</span></label>
+          <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="أي تفاصيل إضافية..." rows={3} style={{...inputStyle,resize:"vertical",minHeight:80}}/>
+          {error&&<div style={{padding:10,borderRadius:8,background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.3)",color:"#EF4444",fontSize:13,textAlign:"center",marginBottom:12,fontWeight:600}}>{error}</div>}
+          <button onClick={submit} disabled={submitting} style={{width:"100%",padding:16,borderRadius:12,border:"none",cursor:submitting?"not-allowed":"pointer",background:"linear-gradient(135deg,#C8A951,#A67C2E)",color:"#0B1120",fontSize:18,fontWeight:800,marginTop:8,fontFamily:"inherit",opacity:submitting?0.6:1}}>{submitting?"جاري الإرسال..." :"📤 إرسال الطلب"}</button>
+        </div>
+        <div style={{marginTop:24,fontSize:12,color:"rgba(148,163,184,0.5)",textAlign:"center"}}>برمجة وتصميم / خالد محمود المرزوقي</div>
+      </div>
+    </div>
+  );
+};
+
 /* ═══════ TRACKING PAGE (public, no login) ═══════ */
 const TrackingPage=({trackingId})=>{
   const[status,setStatus]=useState("connecting");
@@ -697,6 +1034,7 @@ export default function AppRouter() {
   const path=window.location.pathname;
   const trackMatch=path.match(/\/track\/(.+)/);
   if(trackMatch) return <TrackingPage trackingId={trackMatch[1]}/>;
+  if(path==="/request-car"||path==="/request-car/") return <CarRequestPage/>;
   return <MainApp/>;
 }
 
@@ -712,6 +1050,9 @@ function MainApp() {
   const[cars,setCars]=useState([]);
   const[savedUsers,setSavedUsers]=useState([]);
   const[savedReceivers,setSavedReceivers]=useState([]);
+  const[carRequests,setCarRequests]=useState([]);
+  const[carRequestsLog,setCarRequestsLog]=useState([]);
+  const[committees,setCommittees]=useState(DEFAULT_COMMITTEES);
   const[confirmDisableOpen,setConfirmDisableOpen]=useState(false);
   const[loading,setLoading]=useState(true);
 
@@ -722,8 +1063,14 @@ function MainApp() {
     unsubs.push(listenToCars(setCars));
     unsubs.push(listenToSavedNames("carUsers",names=>{if(names)setSavedUsers(names);}));
     unsubs.push(listenToSavedNames("keyReceivers",names=>{if(names)setSavedReceivers(names);}));
+    unsubs.push(listenToCarRequests(setCarRequests));
+    unsubs.push(listenToCarRequestsLog(setCarRequestsLog));
+    unsubs.push(listenToCommittees(list=>{if(list&&list.length)setCommittees(list);}));
     return()=>unsubs.forEach(u=>u());
   },[]);
+
+  const handleCloseRequest=(req)=>{closeCarRequest(req.id,req);};
+  const handleSaveCommittees=(list)=>{setCommittees(list);saveCommittees(list);};
 
   const persistBus=(busId,data)=>{saveBusData(busId,data);};
   const updateBus=useCallback((busId,dataOrFn)=>{setBusesData(prev=>{const updated=prev.map(b=>{if(b.id!==busId)return b;const nd=typeof dataOrFn==="function"?{...b,...dataOrFn(b)}:dataOrFn;persistBus(busId,nd);return nd;});return updated;});},[]);
@@ -788,7 +1135,7 @@ function MainApp() {
         {(isAdmin||isViewer)&&view==="dashboard"&&<AdminDashboard busesData={busesData} busConfigs={busConfigs} onSelectBus={id=>setView(id)} onLogout={()=>{setAuth(null);setView("dashboard");}} openBoarding={settings.openBoarding} onEnableOpen={()=>updateSettings({...settings,openBoarding:true})} onDisableOpen={()=>{if(settings.openBoarding)setConfirmDisableOpen(true);}} onGoTo={v=>setView(v)} t={t} readOnly={readOnly}/>}
         {isAdmin&&view==="pilgrim-mgmt"&&<PilgrimMgmtPage busesData={busesData} busConfigs={busConfigs} onAdd={addPilgrim} onDelete={deletePilgrim} onEdit={editPilgrim} onTransfer={transferPilgrim} onBulkImport={bulkImport} onBack={()=>setView("dashboard")} t={t}/>}
         {isAdmin&&view==="bus-mgmt"&&<BusMgmtPage busConfigs={busConfigs} onUpdate={updateBusConfigsFn} settings={settings} onUpdateSettings={updateSettings} onBack={()=>setView("dashboard")} t={t}/>}
-        {(isAdmin||isViewer||isCarSupervisor)&&view==="cars"&&<CarMgmtPage cars={cars} onSaveCar={saveCar} onDeleteCar={deleteCarFb} onAddHistory={addCarHistory} savedUsers={savedUsers} savedReceivers={savedReceivers} onSaveUsers={n=>saveSavedNames("carUsers",n)} onSaveReceivers={n=>saveSavedNames("keyReceivers",n)} onBack={()=>(isAdmin||isViewer)?setView("dashboard"):setAuth(null)} t={t} readOnly={isViewer} baseUrl={baseUrl}/>}
+        {(isAdmin||isViewer||isCarSupervisor)&&view==="cars"&&<CarMgmtPage cars={cars} onSaveCar={saveCar} onDeleteCar={deleteCarFb} onAddHistory={addCarHistory} savedUsers={savedUsers} savedReceivers={savedReceivers} onSaveUsers={n=>saveSavedNames("carUsers",n)} onSaveReceivers={n=>saveSavedNames("keyReceivers",n)} onBack={()=>(isAdmin||isViewer)?setView("dashboard"):setAuth(null)} t={t} readOnly={isViewer} baseUrl={baseUrl} carRequests={carRequests} carRequestsLog={carRequestsLog} onCloseRequest={handleCloseRequest} committees={committees} onSaveCommittees={handleSaveCommittees}/>}
         {typeof view==="number"&&selBus&&selConfig&&<BusLeaderView busData={selBus} busConfig={selConfig} allBusConfigs={busConfigs} allBusesData={busesData}
           onBack={()=>(isAdmin||isViewer)?setView("dashboard"):setAuth(null)}
           onUpdate={data=>updateBus(selBus.id,data)}
