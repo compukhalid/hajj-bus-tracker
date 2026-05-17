@@ -41,6 +41,15 @@ const DEFAULT_COMMITTEES = [
   "اللجنة الإعلامية"
 ];
 
+/* ═══════ VEHICLE TYPES ═══════ */
+const VEHICLE_TYPES = [
+  { value: "car_with_driver", label: "🚗 سيارة مع سائق" },
+  { value: "car_without_driver", label: "🔑 سيارة بدون سائق" },
+  { value: "refrigerated_truck", label: "❄️ شاحنة مبردة (الثلاجة)" },
+  { value: "bus", label: "🚌 باص" }
+];
+const vehicleLabel = (val) => (VEHICLE_TYPES.find(v => v.value === val)?.label) || val || "—";
+
 /* ═══════ MAP TILE STYLES (free, no API key needed) ═══════ */
 const MAP_STYLES = {
   voyager: { name: "🗺️ شوارع فاتحة", url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", attribution: "© OpenStreetMap © CARTO", maxZoom: 19 },
@@ -300,7 +309,10 @@ const CarRequestsList=({requests,onClose,t,readOnly})=>{
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:8,flexWrap:"wrap"}}>
               <div style={{flex:1,minWidth:200}}>
                 <div style={{fontSize:15,fontWeight:800,color:t.text}}>{r.name}</div>
-                <div style={{fontSize:11,color:"#C8A951",fontWeight:600,marginTop:2}}>{r.committee}</div>
+                <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap",alignItems:"center"}}>
+                  <div style={{fontSize:11,color:"#C8A951",fontWeight:600}}>{r.committee}</div>
+                  {r.vehicleType&&<div style={{fontSize:11,fontWeight:700,color:"#06B6D4",background:"rgba(6,182,212,0.12)",border:"1px solid rgba(6,182,212,0.3)",borderRadius:6,padding:"2px 8px"}}>{vehicleLabel(r.vehicleType)}</div>}
+                </div>
               </div>
               <div style={{fontSize:10,color:t.textDim,textAlign:"left"}}>وصل: {fmtCreated(r.createdAt)}</div>
             </div>
@@ -352,7 +364,11 @@ const CarRequestsLogView=({logs,t})=>{
       {logs.map(r=>(
         <div key={r.id} style={{padding:12,borderRadius:10,background:t.bgCard,border:`1px solid ${t.border}`,opacity:0.85}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:6}}>
-            <div style={{fontSize:14,fontWeight:700}}>{r.name} <span style={{fontSize:11,color:"#C8A951",fontWeight:500}}>• {r.committee}</span></div>
+            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+              <span style={{fontSize:14,fontWeight:700}}>{r.name}</span>
+              <span style={{fontSize:11,color:"#C8A951",fontWeight:500}}>• {r.committee}</span>
+              {r.vehicleType&&<span style={{fontSize:10,fontWeight:700,color:"#06B6D4",background:"rgba(6,182,212,0.12)",border:"1px solid rgba(6,182,212,0.25)",borderRadius:5,padding:"1px 6px"}}>{vehicleLabel(r.vehicleType)}</span>}
+            </div>
             <div style={{fontSize:10,color:"#22C55E"}}>✅ أُغلق: {fmt(r.closedAt)}</div>
           </div>
           <div style={{fontSize:11,color:t.textMuted,display:"flex",gap:12,flexWrap:"wrap"}}>
@@ -906,6 +922,7 @@ const CarRequestPage=()=>{
   const[committees,setCommittees]=useState(DEFAULT_COMMITTEES);
   const[name,setName]=useState("");const[phone,setPhone]=useState("");
   const[committee,setCommittee]=useState("");
+  const[vehicleType,setVehicleType]=useState("");
   const[dateTime,setDateTime]=useState("");const[destination,setDestination]=useState("");
   const[duration,setDuration]=useState("");const[notes,setNotes]=useState("");
   const[submitting,setSubmitting]=useState(false);const[success,setSuccess]=useState(false);const[error,setError]=useState("");
@@ -915,13 +932,14 @@ const CarRequestPage=()=>{
     if(!name.trim()){setError("الرجاء إدخال الاسم");return;}
     if(!phone.trim()){setError("الرجاء إدخال رقم الجوال");return;}
     if(!committee){setError("الرجاء اختيار اللجنة");return;}
+    if(!vehicleType){setError("الرجاء اختيار نوع السيارة المطلوبة");return;}
     if(!dateTime){setError("الرجاء اختيار اليوم والوقت");return;}
     if(!destination.trim()){setError("الرجاء إدخال الوجهة");return;}
     if(!duration.trim()){setError("الرجاء إدخال المدة");return;}
     setSubmitting(true);
-    const id=await saveCarRequest({name:name.trim(),phone:phone.trim(),committee,dateTime,destination:destination.trim(),duration:duration.trim(),notes:notes.trim()});
+    const id=await saveCarRequest({name:name.trim(),phone:phone.trim(),committee,vehicleType,dateTime,destination:destination.trim(),duration:duration.trim(),notes:notes.trim()});
     setSubmitting(false);
-    if(id){setSuccess(true);setName("");setPhone("");setCommittee("");setDateTime("");setDestination("");setDuration("");setNotes("");}
+    if(id){setSuccess(true);setName("");setPhone("");setCommittee("");setVehicleType("");setDateTime("");setDestination("");setDuration("");setNotes("");}
     else{setError("حدث خطأ، حاول مرة أخرى");}
   };
   const inputStyle={width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.15)",color:"#F1F5F9",borderRadius:10,padding:"12px 14px",fontSize:14,outline:"none",direction:"rtl",boxSizing:"border-box",fontFamily:"inherit",marginBottom:12};
@@ -957,6 +975,12 @@ const CarRequestPage=()=>{
             <option value="" style={{background:"#1E293B",color:"#F1F5F9"}}>— اختر اللجنة —</option>
             {committees.map(c=><option key={c} value={c} style={{background:"#1E293B",color:"#F1F5F9"}}>{c}</option>)}
           </select>
+          <label style={labelStyle}>اختر نوع السيارة المطلوبة</label>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+            {VEHICLE_TYPES.map(v=>{const sel=vehicleType===v.value;return(
+              <button key={v.value} type="button" onClick={()=>setVehicleType(v.value)} style={{padding:"12px 10px",borderRadius:10,border:sel?"2px solid #C8A951":"1px solid rgba(255,255,255,0.15)",background:sel?"rgba(200,169,81,0.18)":"rgba(255,255,255,0.04)",color:sel?"#C8A951":"#F1F5F9",fontSize:13,fontWeight:sel?700:600,cursor:"pointer",fontFamily:"inherit",textAlign:"center",transition:"all 0.15s"}}>{v.label}</button>
+            );})}
+          </div>
           <label style={labelStyle}>اليوم والوقت المطلوب</label>
           <input type="datetime-local" value={dateTime} onChange={e=>setDateTime(e.target.value)} style={{...inputStyle,colorScheme:"dark"}}/>
           <label style={labelStyle}>الوجهة</label>
