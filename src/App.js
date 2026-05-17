@@ -230,7 +230,7 @@ const PilgrimMgmtPage=({busesData,busConfigs,onAdd,onDelete,onEdit,onTransfer,on
       </div>
       <div style={{background:t.bgCard,borderRadius:12,border:`1px solid ${t.border}`,padding:14,marginBottom:16}}>
         <div style={{fontSize:12,fontWeight:700,color:t.textMuted,marginBottom:10}}>إضافة شخص جديد</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}><Input value={an} onChange={setAn} placeholder="الاسم"/><select value={at} onChange={e=>setAt(e.target.value)} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:"inherit",borderRadius:8,padding:"10px",fontSize:14,fontFamily:"inherit",outline:"none"}}><option value="pilgrim">🕋 حاج</option><option value="admin">👤 إداري</option></select></div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}><Input value={an} onChange={setAn} placeholder="الاسم"/><select value={at} onChange={e=>setAt(e.target.value)} style={{background:t.bgInput,border:`1px solid ${t.borderInput}`,color:t.text,borderRadius:8,padding:"10px",fontSize:14,fontFamily:"inherit",outline:"none"}}><option value="pilgrim" style={{background:t.modalBg,color:t.text}}>🕋 حاج</option><option value="admin" style={{background:t.modalBg,color:t.text}}>👤 إداري</option></select></div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:8}}><Input value={ar} onChange={setAr} placeholder="غرفة"/><Input value={ap} onChange={setAp} placeholder="هاتف"/><div style={{display:"flex",gap:4,alignItems:"center"}}><Input value={af} onChange={setAf} placeholder="عائلة"/>{af&&<label style={{fontSize:11,color:"#C8A951",display:"flex",alignItems:"center",gap:2,whiteSpace:"nowrap"}}><input type="checkbox" checked={ah} onChange={e=>setAh(e.target.checked)}/> رب</label>}</div></div>
         <Btn onClick={()=>{if(!an.trim()||sts.length>=BUS_CAPACITY)return;onAdd(sid,{name:an.trim(),type:at,room:ar.trim(),phone:ap.trim(),familyNum:af.trim(),isHead:ah});setAn("");setAr("");setAp("");setAf("");setAh(false);}} disabled={!an.trim()||sts.length>=BUS_CAPACITY} color="#22C55E" style={{width:"100%"}}>{sts.length>=BUS_CAPACITY?"ممتلئ":"+ إضافة"}</Btn>
       </div>
@@ -241,7 +241,7 @@ const PilgrimMgmtPage=({busesData,busConfigs,onAdd,onDelete,onEdit,onTransfer,on
           {!isE&&!isT?(<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{s.type==="admin"?"👤 ":s.isHead?"👑 ":s.familyNum?"👥 ":"🕋 "}{s.name}</div><div style={{fontSize:10,color:t.textDim,marginTop:2,display:"flex",gap:8,flexWrap:"wrap"}}><span>{s.type==="admin"?"إداري":"حاج"}</span>{s.familyNum&&<span style={{color:"#C8A951"}}>عائلة {s.familyNum}</span>}{s.room&&<span>غ{s.room}</span>}{s.phone&&<span>📱{s.phone}</span>}</div></div>
             <div style={{display:"flex",gap:4}}><button onClick={()=>{setEditing(s.id);setEn(s.name);setEr(s.room||"");setEp(s.phone||"");}} style={{background:"rgba(59,130,246,0.15)",border:"none",color:"#60A5FA",borderRadius:6,padding:"5px 10px",fontSize:10,cursor:"pointer",fontFamily:"inherit"}}>✏️</button><button onClick={()=>{setTransferring(s.id);setTt("");}} style={{background:"rgba(139,92,246,0.15)",border:"none",color:"#A78BFA",borderRadius:6,padding:"5px 10px",fontSize:10,cursor:"pointer",fontFamily:"inherit"}}>🔄</button><button onClick={()=>{if(window.confirm(`حذف ${s.name}؟`))onDelete(sid,s.id);}} style={{background:"rgba(239,68,68,0.15)",border:"none",color:"#EF4444",borderRadius:6,padding:"5px 10px",fontSize:10,cursor:"pointer",fontFamily:"inherit"}}>🗑️</button></div></div>
           ):isE?(<div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}><Input value={en} onChange={setEn} placeholder="الاسم"/><Input value={er} onChange={setEr} placeholder="غرفة"/></div><Input value={ep} onChange={setEp} placeholder="هاتف" style={{marginBottom:8}}/><div style={{display:"flex",gap:6}}><Btn onClick={()=>{onEdit(sid,s.id,{name:en,room:er,phone:ep});setEditing(null);}} color="#22C55E" small>💾</Btn><Btn onClick={()=>setEditing(null)} color="transparent" small style={{border:`1px solid ${t.border}`,color:t.textMuted}}>إلغاء</Btn></div></div>
-          ):(<div><select value={tt} onChange={e=>setTt(e.target.value)} style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:"inherit",borderRadius:6,padding:"8px",fontSize:12,fontFamily:"inherit",outline:"none",marginBottom:6}}><option value="">اختر...</option>{busConfigs.filter(b=>b.id!==sid).map(b=>{const tb=busesData.find(x=>x.id===b.id);return<option key={b.id} value={b.id} disabled={tb.students.length>=BUS_CAPACITY}>{b.name} ({tb.students.length}/{BUS_CAPACITY})</option>;})}</select><div style={{display:"flex",gap:6}}><Btn onClick={()=>{if(tt){onTransfer(sid,s.id,Number(tt));setTransferring(null);}}} disabled={!tt} color="#8B5CF6" small>نقل</Btn><Btn onClick={()=>setTransferring(null)} color="transparent" small style={{border:`1px solid ${t.border}`,color:t.textMuted}}>إلغاء</Btn></div></div>)}
+          ):(<div><select value={tt} onChange={e=>setTt(e.target.value)} style={{width:"100%",background:t.bgInput,border:`1px solid ${t.borderInput}`,color:t.text,borderRadius:6,padding:"8px",fontSize:12,fontFamily:"inherit",outline:"none",marginBottom:6}}><option value="" style={{background:t.modalBg,color:t.text}}>اختر...</option>{busConfigs.filter(b=>b.id!==sid).map(b=>{const tb=busesData.find(x=>x.id===b.id);return<option key={b.id} value={b.id} disabled={tb.students.length>=BUS_CAPACITY} style={{background:t.modalBg,color:t.text}}>{b.name} ({tb.students.length}/{BUS_CAPACITY})</option>;})}</select><div style={{display:"flex",gap:6}}><Btn onClick={()=>{if(tt){onTransfer(sid,s.id,Number(tt));setTransferring(null);}}} disabled={!tt} color="#8B5CF6" small>نقل</Btn><Btn onClick={()=>setTransferring(null)} color="transparent" small style={{border:`1px solid ${t.border}`,color:t.textMuted}}>إلغاء</Btn></div></div>)}
         </div>);})}
       </div>
       <Modal open={bulkOpen} onClose={()=>{setBulkOpen(false);setBulkPreview(null);setBulkText("");}} title="📋 استيراد جماعي" width={600} t={t}>
@@ -741,11 +741,11 @@ const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,openBoarding,on
 );
 
 /* ═══════ BUS LEADER VIEW ═══════ */
-const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpdate,onCrossBoard,openBoarding,canCheckin,canManageFamilies,canChangeStatus,busAdmins,onUpdateBusAdmins,t})=>{
+const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpdate,onCrossBoard,openBoarding,canCheckin,canManageFamilies,canChangeStatus,busAdmins,onUpdateBusAdmins,currentUserName,currentUserRole,t})=>{
   const[scanAnim,setScanAnim]=useState(null);const[gpsStatus,setGpsStatus]=useState("waiting");
   const[searchQ,setSearchQ]=useState("");const[copied,setCopied]=useState(null);
   const[destModal,setDestModal]=useState(false);const[destInput,setDestInput]=useState("");
-  const[familyModal,setFamilyModal]=useState(false);const[familyCheckinModal,setFamilyCheckinModal]=useState(null);
+  const[familyModal,setFamilyModal]=useState(false);const[familyCheckinModal,setFamilyCheckinModal]=useState(null);const[familyEditNum,setFamilyEditNum]=useState(null);
   const[crossBoardModal,setCrossBoardModal]=useState(false);const[crossBoardSearch,setCrossBoardSearch]=useState("");const[crossBoardFilterBus,setCrossBoardFilterBus]=useState("");
   const[editPilgrimState,setEditPilgrimState]=useState(null);const[epName,setEpName]=useState("");const[epPhone,setEpPhone]=useState("");const[epRoom,setEpRoom]=useState("");
   const[familyNumCheckin,setFamilyNumCheckin]=useState("");
@@ -757,15 +757,21 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
 
   useEffect(()=>{if(!navigator.geolocation){setGpsStatus("simulated");return;}navigator.geolocation.getCurrentPosition(p=>{setGpsStatus("active");onUpdate({...busData,location:{lat:p.coords.latitude,lng:p.coords.longitude}});},()=>setGpsStatus("simulated"),{enableHighAccuracy:true,timeout:8000});geoRef.current=navigator.geolocation.watchPosition(p=>{setGpsStatus("active");onUpdate(prev=>({...(prev||busData),location:{lat:p.coords.latitude,lng:p.coords.longitude}}));},()=>setGpsStatus("simulated"),{enableHighAccuracy:true,maximumAge:5000,timeout:15000});return()=>{if(geoRef.current!==null)navigator.geolocation.clearWatch(geoRef.current);};},[]);
 
-  const togglePilgrim=(pid)=>{if(!canCheckin)return;const now=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});const st=students.find(s=>s.id===pid);if(!st.checkedIn){setScanAnim(pid);setTimeout(()=>setScanAnim(null),800);}onUpdate({...busData,students:students.map(s=>s.id===pid?{...s,checkedIn:!s.checkedIn,time:s.checkedIn?null:now,method:s.checkedIn?null:"manual"}:s)});};
-  const checkinFamily=(headOrFamNum,allMembers)=>{if(!canCheckin)return;const now=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});let memberIds;if(typeof headOrFamNum==="string"){memberIds=students.filter(s=>s.familyNum===headOrFamNum).map(s=>s.id);}else{memberIds=students.filter(s=>s.familyNum&&s.familyNum===headOrFamNum.familyNum).map(s=>s.id);}if(allMembers){onUpdate({...busData,students:students.map(s=>memberIds.includes(s.id)?{...s,checkedIn:true,time:now,method:"manual"}:s)});}else if(typeof headOrFamNum!=="string"){togglePilgrim(headOrFamNum.id);}setFamilyCheckinModal(null);setFamilyNumCheckin("");};
+  const togglePilgrim=(pid)=>{if(!canCheckin)return;const now=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});const st=students.find(s=>s.id===pid);if(!st.checkedIn){setScanAnim(pid);setTimeout(()=>setScanAnim(null),800);}onUpdate({...busData,students:students.map(s=>s.id===pid?{...s,checkedIn:!s.checkedIn,time:s.checkedIn?null:now,method:s.checkedIn?null:"manual",checkedInBy:s.checkedIn?null:(currentUserName||""),checkedInByRole:s.checkedIn?null:(currentUserRole||"")}:s)});};
+  const checkinFamily=(headOrFamNum,allMembers)=>{if(!canCheckin)return;const now=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});let memberIds;if(typeof headOrFamNum==="string"){memberIds=students.filter(s=>s.familyNum===headOrFamNum).map(s=>s.id);}else{memberIds=students.filter(s=>s.familyNum&&s.familyNum===headOrFamNum.familyNum).map(s=>s.id);}if(allMembers){onUpdate({...busData,students:students.map(s=>memberIds.includes(s.id)?{...s,checkedIn:true,time:now,method:"manual",checkedInBy:currentUserName||"",checkedInByRole:currentUserRole||""}:s)});}else if(typeof headOrFamNum!=="string"){togglePilgrim(headOrFamNum.id);}setFamilyCheckinModal(null);setFamilyNumCheckin("");};
   const setStatus=(s)=>{if(!canChangeStatus)return;if(s==="commuting"){setDestModal(true);return;}onUpdate({...busData,status:s,destination:""});};
   const confirmDest=()=>{if(!destInput.trim())return;onUpdate({...busData,status:"commuting",destination:destInput.trim()});setDestModal(false);setDestInput("");};
   const copyList=(type)=>{const list=students.filter(s=>type==="present"?s.checkedIn:!s.checkedIn);const text=(type==="present"?`✅ الحاضرون (${list.length})`:`❌ الغائبون (${list.length})`)+"\n"+list.map((s,i)=>`${i+1}. ${s.name}${s.room?` (غ${s.room})`:""}`).join("\n");const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();try{document.execCommand("copy");setCopied(type);setTimeout(()=>setCopied(null),2500);}catch(e){}document.body.removeChild(ta);};
   const savePilgrimEdit=()=>{if(!editPilgrimState)return;onUpdate({...busData,students:students.map(s=>s.id===editPilgrimState.id?{...s,name:epName||s.name,phone:epPhone,room:epRoom}:s)});setEditPilgrimState(null);};
   const createFamily=(ids,headId,familyNum)=>{onUpdate({...busData,students:students.map(s=>ids.includes(s.id)?{...s,familyNum,isHead:s.id===headId}:s)});};
   const removeFamily=(famNum)=>{onUpdate({...busData,students:students.map(s=>s.familyNum===famNum?{...s,familyNum:"",isHead:false}:s)});};
-  const resetCheckins=()=>{if(!canCheckin)return;onUpdate({...busData,students:students.map(s=>({...s,checkedIn:false,time:null,method:null})),status:"stopped",destination:""});};
+  // Set a member as the family head (the previous head becomes a regular member automatically)
+  const setFamilyHead=(famNum,memberId)=>{onUpdate({...busData,students:students.map(s=>s.familyNum===famNum?{...s,isHead:s.id===memberId}:s)});};
+  // Remove a single member from a family (does not affect rest of family); if removed member was head, clear head flag too
+  const removeMemberFromFamily=(memberId)=>{onUpdate({...busData,students:students.map(s=>s.id===memberId?{...s,familyNum:"",isHead:false}:s)});};
+  // Add an existing pilgrim (from THIS bus) to a family. If already in another family, they are moved.
+  const addMemberToFamily=(famNum,memberId)=>{onUpdate({...busData,students:students.map(s=>s.id===memberId?{...s,familyNum:famNum,isHead:false}:s)});};
+  const resetCheckins=()=>{if(!canCheckin)return;onUpdate({...busData,students:students.map(s=>({...s,checkedIn:false,time:null,method:null,checkedInBy:null,checkedInByRole:null})),status:"stopped",destination:""});};
 
   const sorted=[...students].sort((a,b)=>{if(a.type==="admin"&&b.type!=="admin")return 1;if(b.type==="admin"&&a.type!=="admin")return -1;if(a.isHead&&!b.isHead)return -1;if(!a.isHead&&b.isHead)return 1;return 0;});
   const filtered=searchQ.trim()?sorted.filter(s=>s.name.includes(searchQ.trim())):sorted;
@@ -797,6 +803,7 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
       {isHead&&!isCross&&s.familyNum&&<div style={{fontSize:10,color:"#C8A951",marginTop:2}}>👑 عائلة {s.familyNum}</div>}
       {s.room&&<div style={{fontSize:9,color:t.textDim,marginTop:1}}>غرفة {s.room}</div>}
       {s.checkedIn&&s.time&&!wentAway&&<div style={{fontSize:10,color:t.textDim,marginTop:3}}>{s.time}</div>}
+      {s.checkedIn&&s.checkedInBy&&!wentAway&&<div style={{fontSize:9,color:"#22C55E",marginTop:2,fontWeight:600,lineHeight:1.3}}>✓ تم الإدخال من قبل {s.checkedInByRole==="supervisor"?"مشرف الباص ":s.checkedInByRole==="busAdmin"?"الإداري ":""}{s.checkedInBy}</div>}
     </div>);
   };
 
@@ -827,7 +834,7 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
           {canManageFamilies&&<Btn onClick={()=>setFamilyModal(true)} color="#8B5CF6" small style={{flex:1}}>👨‍👩‍👧‍👦 العائلات</Btn>}
           {canCheckin&&familyNums.length>0&&<div style={{background:"rgba(200,169,81,0.08)",borderRadius:10,padding:8,border:"1px solid rgba(200,169,81,0.2)"}}>
             <div style={{fontSize:10,color:"#C8A951",marginBottom:4,fontWeight:700}}>تسجيل عائلة</div>
-            <div style={{display:"flex",gap:4}}><select value={familyNumCheckin} onChange={e=>setFamilyNumCheckin(e.target.value)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:"inherit",borderRadius:6,padding:"6px 8px",fontSize:12,fontFamily:"inherit",outline:"none"}}><option value="">العائلة...</option>{familyNums.map(fn=><option key={fn} value={fn}>{fn}</option>)}</select><Btn onClick={()=>{if(familyNumCheckin)checkinFamily(familyNumCheckin,true);}} disabled={!familyNumCheckin} color="#C8A951" small style={{fontSize:10}}>✅</Btn></div>
+            <div style={{display:"flex",gap:4}}><select value={familyNumCheckin} onChange={e=>setFamilyNumCheckin(e.target.value)} style={{flex:1,background:t.bgInput,border:`1px solid ${t.borderInput}`,color:t.text,borderRadius:6,padding:"6px 8px",fontSize:12,fontFamily:"inherit",outline:"none"}}><option value="" style={{background:t.modalBg,color:t.text}}>العائلة...</option>{familyNums.map(fn=><option key={fn} value={fn} style={{background:t.modalBg,color:t.text}}>{fn}</option>)}</select><Btn onClick={()=>{if(familyNumCheckin)checkinFamily(familyNumCheckin,true);}} disabled={!familyNumCheckin} color="#C8A951" small style={{fontSize:10}}>✅</Btn></div>
           </div>}
         </div>
       </div>
@@ -851,9 +858,41 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
       {/* Family modal */}
       <Modal open={familyModal} onClose={()=>setFamilyModal(false)} title="العائلات" width={500} t={t}>
         {(()=>{const ef={};students.forEach(s=>{if(s.familyNum){if(!ef[s.familyNum])ef[s.familyNum]=[];ef[s.familyNum].push(s);}});const ua=students.filter(s=>!s.familyNum&&s.type!=="admin");return(<div>
-          {Object.keys(ef).length>0&&<div style={{marginBottom:20}}>{Object.entries(ef).map(([fn,members])=>{const head=members.find(m=>m.isHead);return(<div key={fn} style={{background:"rgba(200,169,81,0.08)",borderRadius:10,padding:12,marginBottom:8,border:"1px solid rgba(200,169,81,0.2)"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><span style={{fontSize:13,fontWeight:700,color:"#C8A951"}}>عائلة {fn} — {head?.name||"—"} ({members.length})</span><button onClick={()=>removeFamily(fn)} style={{background:"rgba(239,68,68,0.15)",border:"none",color:"#EF4444",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>فك</button></div><div style={{display:"flex",flexWrap:"wrap",gap:4}}>{members.map(m=><span key={m.id} style={{fontSize:11,padding:"2px 8px",borderRadius:6,background:m.isHead?"rgba(200,169,81,0.2)":"rgba(255,255,255,0.05)",color:m.isHead?"#C8A951":t.textMuted}}>{m.isHead?"👑 ":""}{m.name}</span>)}</div></div>);})}</div>}
+          {Object.keys(ef).length>0&&<div style={{marginBottom:20}}>{Object.entries(ef).map(([fn,members])=>{const head=members.find(m=>m.isHead);return(<div key={fn} style={{background:"rgba(200,169,81,0.08)",borderRadius:10,padding:12,marginBottom:8,border:"1px solid rgba(200,169,81,0.25)"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:6,flexWrap:"wrap"}}><span style={{fontSize:13,fontWeight:700,color:"#C8A951"}}>عائلة {fn} — {head?.name||"—"} ({members.length})</span><div style={{display:"flex",gap:4}}><button onClick={()=>setFamilyEditNum(fn)} style={{background:"rgba(59,130,246,0.18)",border:"none",color:"#60A5FA",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>✏️ تعديل</button><button onClick={()=>removeFamily(fn)} style={{background:"rgba(239,68,68,0.18)",border:"none",color:"#EF4444",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>فك</button></div></div><div style={{display:"flex",flexWrap:"wrap",gap:4}}>{members.map(m=><span key={m.id} style={{fontSize:11,padding:"3px 9px",borderRadius:6,background:m.isHead?"rgba(200,169,81,0.22)":t.bgCardHover,color:m.isHead?"#C8A951":t.text,border:`1px solid ${m.isHead?"rgba(200,169,81,0.35)":t.border}`,fontWeight:600}}>{m.isHead?"👑 ":""}{m.name}</span>)}</div></div>);})}</div>}
           {ua.length>=2&&<FamilyCreator unassigned={ua} students={students} onCreateFamily={createFamily} t={t}/>}
+          {Object.keys(ef).length===0&&ua.length<2&&<div style={{padding:30,textAlign:"center",color:t.textDim,fontSize:13}}>لا يوجد حجاج كافون لإنشاء عائلة</div>}
         </div>);})()}
+      </Modal>
+
+      {/* Family edit modal — manage members, head, add/remove */}
+      <Modal open={!!familyEditNum} onClose={()=>setFamilyEditNum(null)} title={`✏️ تعديل عائلة ${familyEditNum||""}`} width={520} t={t}>
+        {familyEditNum&&(()=>{
+          const members=students.filter(s=>s.familyNum===familyEditNum);
+          // Eligible to add: all pilgrims (not admins) on this bus who are NOT already in this family
+          const addable=students.filter(s=>s.type!=="admin"&&s.familyNum!==familyEditNum);
+          return(<div>
+            <div style={{fontSize:12,color:t.textMuted,marginBottom:10,fontWeight:600}}>أعضاء العائلة ({members.length})</div>
+            {members.length===0?<div style={{padding:20,textAlign:"center",color:t.textDim,fontSize:13,background:t.bgCard,borderRadius:8,marginBottom:14}}>لا يوجد أعضاء — أضف من القائمة أدناه</div>
+            :<div style={{display:"grid",gap:6,marginBottom:14}}>{members.map(m=>(<div key={m.id} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",borderRadius:10,background:m.isHead?"rgba(200,169,81,0.12)":t.bgCard,border:`1px solid ${m.isHead?"rgba(200,169,81,0.35)":t.border}`}}>
+              <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",flex:1,fontSize:13,fontWeight:600,color:t.text}}>
+                <input type="radio" name={`head-${familyEditNum}`} checked={!!m.isHead} onChange={()=>setFamilyHead(familyEditNum,m.id)} style={{accentColor:"#C8A951",cursor:"pointer"}}/>
+                <span>{m.isHead?"👑 ":""}{m.name}</span>
+                {m.isHead&&<span style={{fontSize:10,color:"#C8A951",fontWeight:700}}>(رب الأسرة)</span>}
+              </label>
+              <button onClick={()=>removeMemberFromFamily(m.id)} title="إزالة من العائلة" style={{background:"rgba(239,68,68,0.15)",border:"none",color:"#EF4444",borderRadius:6,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>❌ إزالة</button>
+            </div>))}</div>}
+            <div style={{fontSize:11,color:t.textDim,marginBottom:8,padding:"6px 10px",background:"rgba(59,130,246,0.06)",borderRadius:6,border:"1px solid rgba(59,130,246,0.15)"}}>💡 اختر العضو الذي تريد تعيينه كرب أسرة بالنقر على الدائرة بجانب اسمه</div>
+
+            <div style={{borderTop:`1px solid ${t.border}`,paddingTop:14,marginTop:10}}>
+              <div style={{fontSize:12,color:t.textMuted,marginBottom:8,fontWeight:600}}>إضافة عضو إلى العائلة</div>
+              <FamilyMemberAdder addable={addable} familyEditNum={familyEditNum} onAdd={addMemberToFamily} t={t}/>
+            </div>
+
+            <div style={{marginTop:16,display:"flex",gap:8}}>
+              <Btn onClick={()=>setFamilyEditNum(null)} color="#22C55E" style={{flex:1}}>✅ تم</Btn>
+            </div>
+          </div>);
+        })()}
       </Modal>
 
       {/* Family checkin */}
@@ -905,14 +944,55 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
   );
 };
 
+/* ═══════ FAMILY MEMBER ADDER (used inside Family Edit modal) ═══════ */
+const FamilyMemberAdder=({addable,familyEditNum,onAdd,t})=>{
+  const[pickId,setPickId]=useState("");const[confirm,setConfirm]=useState(null);
+  const picked=addable.find(s=>s.id===pickId);
+  const doAdd=()=>{
+    if(!pickId)return;
+    // If pilgrim is in another family, ask for confirmation first
+    if(picked&&picked.familyNum&&picked.familyNum!==familyEditNum){setConfirm(picked);return;}
+    onAdd(familyEditNum,pickId);setPickId("");
+  };
+  const confirmMove=()=>{onAdd(familyEditNum,confirm.id);setPickId("");setConfirm(null);};
+  if(addable.length===0)return(<div style={{padding:14,textAlign:"center",color:t.textDim,fontSize:12,background:t.bgCard,borderRadius:8,border:`1px solid ${t.border}`}}>لا يوجد حجاج إضافيون متاحون</div>);
+  return(<div>
+    <div style={{display:"flex",gap:6}}>
+      <select value={pickId} onChange={e=>setPickId(e.target.value)} style={{flex:1,background:t.bgInput,border:`1px solid ${t.borderInput}`,color:t.text,borderRadius:8,padding:"10px",fontSize:13,fontFamily:"inherit",outline:"none"}}>
+        <option value="" style={{background:t.modalBg,color:t.text}}>اختر حاجاً...</option>
+        {addable.map(s=>(<option key={s.id} value={s.id} style={{background:t.modalBg,color:t.text}}>
+          {s.name}{s.familyNum?` (عائلة ${s.familyNum})`:" (بدون عائلة)"}
+        </option>))}
+      </select>
+      <Btn onClick={doAdd} disabled={!pickId} color="#22C55E" small style={{padding:"10px 14px",fontSize:13}}>+ إضافة</Btn>
+    </div>
+    {picked&&picked.familyNum&&picked.familyNum!==familyEditNum&&<div style={{marginTop:8,padding:"8px 10px",fontSize:11,color:"#F59E0B",background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.25)",borderRadius:6,fontWeight:600}}>⚠️ هذا الحاج عضو في عائلة {picked.familyNum} حالياً — سيتم نقله إلى هذه العائلة</div>}
+    {/* Confirm move modal */}
+    {confirm&&<div onClick={()=>setConfirm(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:10000,padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:t.modalBg,borderRadius:14,border:`1px solid ${t.modalBorder}`,padding:22,maxWidth:380,width:"100%",direction:"rtl",color:t.text}}>
+        <div style={{fontSize:16,fontWeight:800,marginBottom:10,color:"#F59E0B"}}>⚠️ تأكيد النقل</div>
+        <div style={{fontSize:13,marginBottom:18,lineHeight:1.7,color:t.text}}>
+          الحاج <strong>{confirm.name}</strong> عضو حالياً في <strong style={{color:"#C8A951"}}>عائلة {confirm.familyNum}</strong>.
+          {confirm.isHead&&<><br/><span style={{color:"#EF4444",fontSize:12,fontWeight:700}}>⚠️ هو رب الأسرة الحالي — سيتم إزالة هذا الدور عند النقل.</span></>}
+          <br/>هل تريد نقله إلى عائلة {familyEditNum}؟
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <Btn onClick={()=>setConfirm(null)} color="transparent" style={{flex:1,border:`1px solid ${t.border}`,color:t.textMuted}}>إلغاء</Btn>
+          <Btn onClick={confirmMove} color="#F59E0B" style={{flex:1}}>✅ نقل</Btn>
+        </div>
+      </div>
+    </div>}
+  </div>);
+};
+
 /* ═══════ FAMILY CREATOR ═══════ */
 const FamilyCreator=({unassigned,students,onCreateFamily,t})=>{
   const[selected,setSelected]=useState([]);const[headId,setHeadId]=useState("");const[familyNum,setFamilyNum]=useState("");
   return(<div>
     <div style={{fontSize:13,fontWeight:700,color:t.textMuted,marginBottom:8}}>إنشاء عائلة</div>
-    <Input value={familyNum} onChange={setFamilyNum} placeholder="رقم العائلة" style={{marginBottom:8}}/>
-    <div style={{maxHeight:200,overflowY:"auto",marginBottom:12,display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>{unassigned.map(s=><div key={s.id} onClick={()=>setSelected(p=>p.includes(s.id)?p.filter(x=>x!==s.id):[...p,s.id])} style={{padding:"6px 10px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,background:selected.includes(s.id)?"rgba(59,130,246,0.15)":t.bgCard,border:`1px solid ${selected.includes(s.id)?"rgba(59,130,246,0.4)":t.border}`,color:selected.includes(s.id)?"#60A5FA":t.textDim}}>{selected.includes(s.id)?"✓ ":""}{s.name}</div>)}</div>
-    {selected.length>=2&&<div style={{marginBottom:12}}><select value={headId} onChange={e=>setHeadId(e.target.value)} style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:"inherit",borderRadius:8,padding:"8px",fontSize:13,fontFamily:"inherit",outline:"none"}}><option value="">رب العائلة...</option>{selected.map(id=>{const s=students.find(x=>x.id===id);return<option key={id} value={id}>{s?.name}</option>;})}</select></div>}
+    <Input value={familyNum} onChange={setFamilyNum} placeholder="رقم العائلة" style={{marginBottom:8,background:t.bgInput,border:`1px solid ${t.borderInput}`,color:t.text}}/>
+    <div style={{maxHeight:200,overflowY:"auto",marginBottom:12,display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,background:t.bgCard,borderRadius:8,padding:6,border:`1px solid ${t.border}`}}>{unassigned.map(s=><div key={s.id} onClick={()=>setSelected(p=>p.includes(s.id)?p.filter(x=>x!==s.id):[...p,s.id])} style={{padding:"6px 10px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,background:selected.includes(s.id)?"rgba(59,130,246,0.18)":t.bgCardHover,border:`1px solid ${selected.includes(s.id)?"rgba(59,130,246,0.5)":t.border}`,color:selected.includes(s.id)?"#60A5FA":t.text}}>{selected.includes(s.id)?"✓ ":""}{s.name}</div>)}</div>
+    {selected.length>=2&&<div style={{marginBottom:12}}><select value={headId} onChange={e=>setHeadId(e.target.value)} style={{width:"100%",background:t.bgInput,border:`1px solid ${t.borderInput}`,color:t.text,borderRadius:8,padding:"8px",fontSize:13,fontFamily:"inherit",outline:"none"}}><option value="" style={{background:t.modalBg,color:t.text}}>رب العائلة...</option>{selected.map(id=>{const s=students.find(x=>x.id===id);return<option key={id} value={id} style={{background:t.modalBg,color:t.text}}>{s?.name}</option>;})}</select></div>}
     <Btn onClick={()=>{if(selected.length>=2&&headId&&familyNum.trim()){onCreateFamily(selected,headId,familyNum.trim());setSelected([]);setHeadId("");setFamilyNum("");}}} disabled={selected.length<2||!headId||!familyNum.trim()} color="#C8A951" style={{width:"100%"}}>👨‍👩‍👧‍👦 إنشاء ({selected.length})</Btn>
   </div>);
 };
@@ -1180,17 +1260,29 @@ function MainApp() {
         {isAdmin&&view==="pilgrim-mgmt"&&<PilgrimMgmtPage busesData={busesData} busConfigs={busConfigs} onAdd={addPilgrim} onDelete={deletePilgrim} onEdit={editPilgrim} onTransfer={transferPilgrim} onBulkImport={bulkImport} onBack={()=>setView("dashboard")} t={t}/>}
         {isAdmin&&view==="bus-mgmt"&&<BusMgmtPage busConfigs={busConfigs} onUpdate={updateBusConfigsFn} settings={settings} onUpdateSettings={updateSettings} onBack={()=>setView("dashboard")} t={t}/>}
         {(isAdmin||isViewer||isCarSupervisor)&&view==="cars"&&<CarMgmtPage cars={cars} onSaveCar={saveCar} onDeleteCar={deleteCarFb} onAddHistory={addCarHistory} savedUsers={savedUsers} savedReceivers={savedReceivers} onSaveUsers={n=>saveSavedNames("carUsers",n)} onSaveReceivers={n=>saveSavedNames("keyReceivers",n)} onBack={()=>(isAdmin||isViewer)?setView("dashboard"):setAuth(null)} t={t} readOnly={isViewer} baseUrl={baseUrl} carRequests={carRequests} carRequestsLog={carRequestsLog} onCloseRequest={handleCloseRequest} committees={committees} onSaveCommittees={handleSaveCommittees}/>}
-        {typeof view==="number"&&selBus&&selConfig&&<BusLeaderView busData={selBus} busConfig={selConfig} allBusConfigs={busConfigs} allBusesData={busesData}
-          onBack={()=>(isAdmin||isViewer)?setView("dashboard"):setAuth(null)}
-          onUpdate={data=>updateBus(selBus.id,data)}
-          onCrossBoard={crossBoardPilgrim}
-          openBoarding={settings.openBoarding}
-          canCheckin={isAdmin||isSupervisor||(isBusAdmin&&auth.canCheckin)}
-          canManageFamilies={isAdmin||isSupervisor}
-          canChangeStatus={isAdmin||isSupervisor}
-          busAdmins={selConfig.busAdmins||[]}
-          onUpdateBusAdmins={isSupervisor||isAdmin?(admins)=>updateBusAdmins(selBus.id,admins):null}
-          t={t}/>}
+        {typeof view==="number"&&selBus&&selConfig&&(()=>{
+          // Determine current user identity for check-in attribution
+          let currentUserName="";let currentUserRole="";
+          if(isAdmin){currentUserName="الإدارة";currentUserRole="admin";}
+          else if(isSupervisor){currentUserName=selConfig.supervisor||"مشرف الباص";currentUserRole="supervisor";}
+          else if(isBusAdmin){
+            const ba=(selConfig.busAdmins||[]).find(a=>a.id===auth.adminId);
+            currentUserName=ba?.name||"إداري";currentUserRole="busAdmin";
+          }
+          return(<BusLeaderView busData={selBus} busConfig={selConfig} allBusConfigs={busConfigs} allBusesData={busesData}
+            onBack={()=>(isAdmin||isViewer)?setView("dashboard"):setAuth(null)}
+            onUpdate={data=>updateBus(selBus.id,data)}
+            onCrossBoard={crossBoardPilgrim}
+            openBoarding={settings.openBoarding}
+            canCheckin={isAdmin||isSupervisor||(isBusAdmin&&auth.canCheckin)}
+            canManageFamilies={isAdmin||isSupervisor}
+            canChangeStatus={isAdmin||isSupervisor}
+            busAdmins={selConfig.busAdmins||[]}
+            onUpdateBusAdmins={isSupervisor||isAdmin?(admins)=>updateBusAdmins(selBus.id,admins):null}
+            currentUserName={currentUserName}
+            currentUserRole={currentUserRole}
+            t={t}/>);
+        })()}
       </div>
       <Modal open={confirmDisableOpen} onClose={()=>setConfirmDisableOpen(false)} title="تأكيد" t={t}>
         <div style={{fontSize:14,marginBottom:20}}>إنهاء الركوب المفتوح وإرجاع الحجاج؟</div>
