@@ -129,7 +129,17 @@ const LoginPage=({onLogin,settings,busConfigs,theme,toggleTheme})=>{
 const SimpleMap=({locations,height,busConfigs})=>{
   const ref=useRef(null);const mapRef=useRef(null);const tileRef=useRef(null);const markers=useRef({});const ready=useLeaflet();
   const[mapStyle,setMapStyle]=useState(getMapStyle);
+  // Track which marker IDs we've already fit-bounded to. Only fit again when the SET changes.
+  const fittedIdsRef=useRef("");
   const changeStyle=(s)=>{setMapStyle(s);setMapStyleStorage(s);};
+  // Manual recenter button
+  const recenter=()=>{
+    if(!mapRef.current)return;
+    const locs=locations.filter(l=>l.lat&&l.lng);
+    if(locs.length===0){mapRef.current.setView([21.4225,39.8262],12);return;}
+    if(locs.length===1){mapRef.current.setView([locs[0].lat,locs[0].lng],15);return;}
+    mapRef.current.fitBounds(locs.map(l=>[l.lat,l.lng]),{padding:[50,50],maxZoom:15});
+  };
   useEffect(()=>{
     if(!ready||!ref.current||mapRef.current)return;const L=window.L;
     // Default center: Makkah (21.4225, 39.8262), zoom 12
@@ -138,7 +148,7 @@ const SimpleMap=({locations,height,busConfigs})=>{
     const st=MAP_STYLES[mapStyle]||MAP_STYLES.voyager;
     tileRef.current=L.tileLayer(st.url,{maxZoom:st.maxZoom,attribution:st.attribution}).addTo(m);
     mapRef.current=m;
-    return()=>{m.remove();mapRef.current=null;tileRef.current=null;markers.current={};};
+    return()=>{m.remove();mapRef.current=null;tileRef.current=null;markers.current={};fittedIdsRef.current="";};
   },[ready]);
   // Change tile layer when mapStyle changes
   useEffect(()=>{
@@ -147,7 +157,8 @@ const SimpleMap=({locations,height,busConfigs})=>{
     const st=MAP_STYLES[mapStyle]||MAP_STYLES.voyager;
     tileRef.current=window.L.tileLayer(st.url,{maxZoom:st.maxZoom,attribution:st.attribution}).addTo(mapRef.current);
   },[mapStyle]);
-  // Sync markers (add/update/remove) and fit bounds
+  // Sync markers (add/update/remove). Only auto-fit bounds when the SET of marker IDs changes,
+  // NOT on every position update — otherwise user-zooming gets overridden.
   useEffect(()=>{
     if(!mapRef.current||!ready)return;const L=window.L;const m=mapRef.current;
     const locs=locations.filter(l=>l.lat&&l.lng);
@@ -161,7 +172,14 @@ const SimpleMap=({locations,height,busConfigs})=>{
       if(markers.current[id]){markers.current[id].setLatLng([l.lat,l.lng]);markers.current[id].setIcon(ic);markers.current[id].setPopupContent(popupHtml);}
       else{markers.current[id]=L.marker([l.lat,l.lng],{icon:ic}).addTo(m).bindPopup(popupHtml,{closeButton:true,autoClose:false,closeOnClick:false});}
     });
-    if(locs.length>0){m.fitBounds(locs.map(l=>[l.lat,l.lng]),{padding:[50,50],maxZoom:15});}
+    // Only fit bounds if the set of marker IDs has actually changed (new markers added or removed).
+    // This preserves the user's manual zoom/pan during regular GPS updates.
+    const idsKey=[...currentIds].sort().join(",");
+    if(idsKey!==fittedIdsRef.current&&locs.length>0){
+      fittedIdsRef.current=idsKey;
+      if(locs.length===1){m.setView([locs[0].lat,locs[0].lng],Math.max(m.getZoom(),14));}
+      else{m.fitBounds(locs.map(l=>[l.lat,l.lng]),{padding:[50,50],maxZoom:15});}
+    }
   },[locations,ready]);
   return(
     <div style={{position:"relative",borderRadius:16,overflow:"hidden",border:"1px solid rgba(255,255,255,0.08)",marginBottom:20}}>
@@ -172,6 +190,8 @@ const SimpleMap=({locations,height,busConfigs})=>{
           <button key={k} onClick={()=>changeStyle(k)} title={MAP_STYLES[k].name} style={{background:mapStyle===k?"rgba(200,169,81,0.25)":"transparent",border:mapStyle===k?"1px solid #C8A951":"1px solid transparent",color:mapStyle===k?"#C8A951":"#94A3B8",borderRadius:6,padding:"4px 8px",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:600,textAlign:"right",whiteSpace:"nowrap"}}>{MAP_STYLES[k].name}</button>
         ))}
       </div>}
+      {/* Recenter button — fits all markers in view */}
+      {ready&&locations.filter(l=>l.lat&&l.lng).length>0&&<button onClick={recenter} title="إعادة التمركز على جميع المواقع" style={{position:"absolute",bottom:10,left:10,zIndex:500,background:"rgba(15,23,42,0.85)",backdropFilter:"blur(8px)",border:"1px solid rgba(255,255,255,0.15)",color:"#C8A951",borderRadius:8,padding:"8px 12px",fontSize:13,cursor:"pointer",fontFamily:"inherit",fontWeight:700,display:"flex",alignItems:"center",gap:6}}>📍 إعادة التمركز</button>}
       {!ready&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(15,23,42,0.95)",color:"#64748B",fontSize:13}}>جاري التحميل...</div>}
     </div>
   );
