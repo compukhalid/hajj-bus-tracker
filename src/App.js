@@ -1,29 +1,3 @@
-None selected 
-
-Skip to content
-Using Gmail with screen readers
-in:sent 
-1 of 1,999
-(no subject)
-Inbox
-
-Khalid Mahmood Almarzouqi <compukhalid@gmail.com>
-Attachments
-7:18 PM (4 minutes ago)
-to Marwan
-
- One attachment
-  •  Scanned by Gmail
-Anti-virus warning – 1 attachment contains a virus or blocked file. Downloading this attachment is disabled.
-
-Mail Delivery Subsystem <mailer-daemon@googlemail.com>
-7:18 PM (4 minutes ago)
-to me
-
-For security reasons, Gmail does not allow you to use this type of file as it violates Google policy for executables and archives.
-
-
-
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   saveBusData, saveBusConfigs, saveSettings,
