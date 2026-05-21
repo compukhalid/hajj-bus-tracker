@@ -917,7 +917,6 @@ function MainApp() {
     const initTimer=setTimeout(()=>{
       saveSettings("main",DEFAULT_SETTINGS);
     },2000);
-    unsubs.push(settingsDocCheck);
     unsubs.push(listenToCars(setCars));
     unsubs.push(listenToSavedNames("carUsers",names=>{if(names)setSavedUsers(names);}));
     unsubs.push(listenToSavedNames("keyReceivers",names=>{if(names)setSavedReceivers(names);}));
