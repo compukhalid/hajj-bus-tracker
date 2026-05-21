@@ -513,7 +513,12 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
   const geoRef=useRef(null);
 
   const students=busData.students;
-  const isFull=students.length>=BUS_CAPACITY;
+  // In open boarding: isFull based on checked-in count only (not all assigned students)
+  // In normal mode: based on total students assigned to bus
+  const boardedCount=openBoarding
+    ? students.filter(s=>s.checkedIn).length
+    : students.length;
+  const isFull=boardedCount>=BUS_CAPACITY;
 
   // In OPEN BOARDING mode: display starts empty; only show students who were explicitly added (boardedHere flag or cross-boarded)
   // In NORMAL mode: show all home students + cross-boarded
@@ -946,7 +951,13 @@ function MainApp() {
   const editPilgrim=(busId,pid,data)=>{setBusesData(prev=>{const u=prev.map(b=>{if(b.id!==busId)return b;const nb={...b,students:b.students.map(s=>s.id===pid?{...s,...data}:s)};persistBus(busId,nb);return nb;});return u;});};
   const transferPilgrim=(fromBus,pid,toBus)=>{setBusesData(prev=>{const from=prev.find(b=>b.id===fromBus);const p=from?.students.find(s=>s.id===pid);if(!p)return prev;const target=prev.find(b=>b.id===toBus);if(target.students.length>=BUS_CAPACITY)return prev;const u=prev.map(b=>{if(b.id===fromBus){const nb={...b,students:b.students.filter(s=>s.id!==pid)};persistBus(fromBus,nb);return nb;}if(b.id===toBus){const nb={...b,students:[...b.students,{...p,homeBusId:toBus,checkedIn:false,time:null,familyNum:"",isHead:false}]};persistBus(toBus,nb);return nb;}return b;});return u;});};
   const bulkImport=(entries)=>{setBusesData(prev=>{const nb=prev.map(b=>({...b,students:[...b.students]}));entries.forEach(e=>{const bus=nb.find(b=>b.id===e.busId);if(!bus||bus.students.length>=BUS_CAPACITY)return;bus.students.push({id:nid(),name:e.name,type:e.type||"pilgrim",room:e.room||"",phone:"",familyNum:e.familyNum||"",isHead:!!e.isHead,checkedIn:false,time:null,method:null,homeBusId:e.busId,boardedBus:null});});nb.forEach(b=>persistBus(b.id,b));return nb;});};
-  const crossBoardPilgrim=(pid,homeBusId,targetBusId,addedBy)=>{setBusesData(prev=>{const home=prev.find(b=>b.id===homeBusId);const p=home?.students.find(s=>s.id===pid);if(!p)return prev;const target=prev.find(b=>b.id===targetBusId);if(target.students.length>=BUS_CAPACITY)return prev;
+  const crossBoardPilgrim=(pid,homeBusId,targetBusId,addedBy)=>{setBusesData(prev=>{const home=prev.find(b=>b.id===homeBusId);const p=home?.students.find(s=>s.id===pid);if(!p)return prev;const target=prev.find(b=>b.id===targetBusId);
+    // In open boarding: capacity = checked-in count only; in normal: total students
+    const isOpen=settings.openBoarding;
+    const targetCount=isOpen
+      ? target.students.filter(s=>s.checkedIn).length
+      : target.students.length;
+    if(targetCount>=BUS_CAPACITY)return prev;
     // Check: is this person already boarded in another bus? Don't allow duplicate
     if(p.boardedBus&&p.boardedBus!==targetBusId)return prev;
     const now=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
