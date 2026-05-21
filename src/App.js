@@ -481,11 +481,11 @@ const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,openBoarding,on
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:16}}>
       {busesData.map(bus=>{
         const bc=busConfigs.find(c=>c.id===bus.id);
-        // In open boarding: count only checked-in (boarded here) + cross-boarded; original total = all home + cross-boarded
-        const visibleS=openBoarding?bus.students.filter(s=>s.checkedIn||s.homeBusId!==bus.id):bus.students;
-        const chk=visibleS.filter(s=>s.checkedIn).length;
-        const totalS=openBoarding?visibleS.length:bus.students.length;
-        const pct=totalS>0?Math.round((chk/totalS)*100):0;
+        // In open boarding: show checked-in count out of capacity
+        // In normal mode: show checked-in out of total assigned
+        const chk=bus.students.filter(s=>s.checkedIn).length;
+        const totalS=openBoarding?BUS_CAPACITY:bus.students.length;
+        const pct=openBoarding?Math.round((chk/BUS_CAPACITY)*100):totalS>0?Math.round((chk/totalS)*100):0;
         return(
         <div key={bus.id} onClick={()=>onSelectBus(bus.id)} style={{background:t.bgCard,borderRadius:16,border:`1px solid ${t.border}`,padding:20,cursor:"pointer",position:"relative",overflow:"hidden"}}
           onMouseEnter={e=>{e.currentTarget.style.background=t.bgCardHover;}} onMouseLeave={e=>{e.currentTarget.style.background=t.bgCard;}}>
@@ -513,21 +513,22 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
   const geoRef=useRef(null);
 
   const students=busData.students;
-  // In open boarding: isFull based on checked-in count only (not all assigned students)
-  // In normal mode: based on total students assigned to bus
-  const boardedCount=openBoarding
-    ? students.filter(s=>s.checkedIn).length
-    : students.length;
-  const isFull=boardedCount>=BUS_CAPACITY;
 
-  // In OPEN BOARDING mode: display starts empty; only show students who were explicitly added (boardedHere flag or cross-boarded)
-  // In NORMAL mode: show all home students + cross-boarded
-  const visibleStudents=openBoarding
-    ? students.filter(s=>s.checkedIn||s.homeBusId!==busData.id) // only checked-in home students + cross-boarded
-    : students;
+  // In OPEN BOARDING:
+  //   - visibleStudents = only who is checked-in (boarded this bus)
+  //   - isFull = checked-in count >= 55
+  //   - total shown = checked-in count (capacity counter = X/55)
+  // In NORMAL mode:
+  //   - visibleStudents = all assigned students
+  //   - isFull = total assigned >= 55
+  //   - total shown = assigned count
+  const checkedInStudents=students.filter(s=>s.checkedIn);
+  const boardedCount=checkedInStudents.length;
+  const isFull=openBoarding ? boardedCount>=BUS_CAPACITY : students.length>=BUS_CAPACITY;
 
-  const checked=visibleStudents.filter(s=>s.checkedIn).length;
-  const total=openBoarding?visibleStudents.length:students.length;
+  const visibleStudents=openBoarding ? checkedInStudents : students;
+  const checked=boardedCount;
+  const total=openBoarding ? BUS_CAPACITY : students.length;
   const familyNums=[...new Set(students.filter(s=>s.familyNum).map(s=>s.familyNum))];
 
   useEffect(()=>{if(!navigator.geolocation){setGpsStatus("simulated");return;}navigator.geolocation.getCurrentPosition(p=>{setGpsStatus("active");onUpdate({...busData,location:{lat:p.coords.latitude,lng:p.coords.longitude}});},()=>setGpsStatus("simulated"),{enableHighAccuracy:true,timeout:8000});geoRef.current=navigator.geolocation.watchPosition(p=>{setGpsStatus("active");onUpdate(prev=>({...(prev||busData),location:{lat:p.coords.latitude,lng:p.coords.longitude}}));},()=>setGpsStatus("simulated"),{enableHighAccuracy:true,maximumAge:5000,timeout:15000});return()=>{if(geoRef.current!==null)navigator.geolocation.clearWatch(geoRef.current);};},[]);
@@ -933,7 +934,14 @@ function MainApp() {
   const updateSettings=(s)=>{setSettings(s);saveSettings("main",s);};
   const updateBusConfigsFn=(configs)=>{setBusConfigs(configs);saveBusConfigs(configs);};
 
-  const addPilgrim=(busId,data)=>{setBusesData(prev=>{const u=prev.map(b=>{if(b.id!==busId||b.students.length>=BUS_CAPACITY)return b;const nb={...b,students:[...b.students,{id:nid(),name:data.name,type:data.type||"pilgrim",room:data.room||"",phone:data.phone||"",familyNum:data.familyNum||"",isHead:!!data.isHead,checkedIn:false,time:null,method:null,homeBusId:busId,boardedBus:null}]};persistBus(busId,nb);return nb;});return u;});};
+  // Helper: returns the count that matters for capacity check
+  // In open boarding: only checked-in students count toward capacity
+  // In normal mode: all assigned students count
+  const getBusCount=(busStudents)=>settings.openBoarding
+    ? busStudents.filter(s=>s.checkedIn).length
+    : busStudents.length;
+
+  const addPilgrim=(busId,data)=>{setBusesData(prev=>{const u=prev.map(b=>{if(b.id!==busId||getBusCount(b.students)>=BUS_CAPACITY)return b;const nb={...b,students:[...b.students,{id:nid(),name:data.name,type:data.type||"pilgrim",room:data.room||"",phone:data.phone||"",familyNum:data.familyNum||"",isHead:!!data.isHead,checkedIn:false,time:null,method:null,homeBusId:busId,boardedBus:null}]};persistBus(busId,nb);return nb;});return u;});};
   const deletePilgrim=(busId,pid)=>{
     // If the deleted student is a bus admin, also remove from busConfigs.busAdmins
     const bus=busesData.find(b=>b.id===busId);
@@ -949,10 +957,9 @@ function MainApp() {
     setBusesData(prev=>{const u=prev.map(b=>{if(b.id!==busId)return b;const nb={...b,students:b.students.filter(s=>s.id!==pid)};persistBus(busId,nb);return nb;});return u;});
   };
   const editPilgrim=(busId,pid,data)=>{setBusesData(prev=>{const u=prev.map(b=>{if(b.id!==busId)return b;const nb={...b,students:b.students.map(s=>s.id===pid?{...s,...data}:s)};persistBus(busId,nb);return nb;});return u;});};
-  const transferPilgrim=(fromBus,pid,toBus)=>{setBusesData(prev=>{const from=prev.find(b=>b.id===fromBus);const p=from?.students.find(s=>s.id===pid);if(!p)return prev;const target=prev.find(b=>b.id===toBus);if(target.students.length>=BUS_CAPACITY)return prev;const u=prev.map(b=>{if(b.id===fromBus){const nb={...b,students:b.students.filter(s=>s.id!==pid)};persistBus(fromBus,nb);return nb;}if(b.id===toBus){const nb={...b,students:[...b.students,{...p,homeBusId:toBus,checkedIn:false,time:null,familyNum:"",isHead:false}]};persistBus(toBus,nb);return nb;}return b;});return u;});};
+  const transferPilgrim=(fromBus,pid,toBus)=>{setBusesData(prev=>{const from=prev.find(b=>b.id===fromBus);const p=from?.students.find(s=>s.id===pid);if(!p)return prev;const target=prev.find(b=>b.id===toBus);if(getBusCount(target.students)>=BUS_CAPACITY)return prev;const u=prev.map(b=>{if(b.id===fromBus){const nb={...b,students:b.students.filter(s=>s.id!==pid)};persistBus(fromBus,nb);return nb;}if(b.id===toBus){const nb={...b,students:[...b.students,{...p,homeBusId:toBus,checkedIn:false,time:null,familyNum:"",isHead:false}]};persistBus(toBus,nb);return nb;}return b;});return u;});};
   const bulkImport=(entries)=>{setBusesData(prev=>{const nb=prev.map(b=>({...b,students:[...b.students]}));entries.forEach(e=>{const bus=nb.find(b=>b.id===e.busId);if(!bus||bus.students.length>=BUS_CAPACITY)return;bus.students.push({id:nid(),name:e.name,type:e.type||"pilgrim",room:e.room||"",phone:"",familyNum:e.familyNum||"",isHead:!!e.isHead,checkedIn:false,time:null,method:null,homeBusId:e.busId,boardedBus:null});});nb.forEach(b=>persistBus(b.id,b));return nb;});};
   const crossBoardPilgrim=(pid,homeBusId,targetBusId,addedBy)=>{setBusesData(prev=>{const home=prev.find(b=>b.id===homeBusId);const p=home?.students.find(s=>s.id===pid);if(!p)return prev;const target=prev.find(b=>b.id===targetBusId);
-    // In open boarding: capacity = checked-in count only; in normal: total students
     const isOpen=settings.openBoarding;
     const targetCount=isOpen
       ? target.students.filter(s=>s.checkedIn).length
