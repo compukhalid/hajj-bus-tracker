@@ -40,7 +40,6 @@ const collectAllPins=(settings,busConfigs,excludeKey)=>{
       if(excludeKey!==`ba_${ba.id}`&&ba.pin) pins.push({pin:ba.pin,label:`إداري ${bc.name}: ${ba.name}`});
     });
   });
-  // Reserve 0000 always
   return pins;
 };
 // Returns conflict label or null
@@ -988,7 +987,6 @@ function MainApp() {
   const isSupervisor=auth.role==="supervisor";
   const isBusAdmin=auth.role==="busAdmin";
   const isCarSupervisor=auth.role==="carSupervisor";
-  const canEdit=isAdmin;
   const readOnly=isViewer;
 
   return(
