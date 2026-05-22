@@ -1,5 +1,1 @@
-{
-  "rewrites": [
-    { "source": "/track/:path*", "destination": "/index.html" }
-  ]
-}
+{ "rewrites": [{ "source": "/(.*)", "destination": "/" }] }
