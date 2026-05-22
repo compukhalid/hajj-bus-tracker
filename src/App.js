@@ -558,10 +558,14 @@ const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,boardingMode,on
   const[notReturnedAllModal,setNotReturnedAllModal]=useState(false);
   const[copied,setCopied]=useState(null);
 
-  // Build per-bus not-returned summary for return mode
+  // Build per-bus not-returned summary for return mode.
+  // For each bus, find its HOME pilgrims (which may currently be sitting in other buses' student arrays
+  // because of cross-board on outbound; but in our flow wentOut is set on the home record).
+  // A pilgrim "didn't return" = wentOut && !checkedIn && !boardedBus.
   const perBusNotReturned=isReturn?busesData.map(b=>{
     const bc=busConfigs.find(c=>c.id===b.id);
-    const list=b.students.filter(s=>s.wentOut&&!s.checkedIn);
+    const allHome=busesData.flatMap(b2=>b2.students).filter(s=>s.homeBusId===b.id);
+    const list=allHome.filter(s=>s.wentOut&&!s.checkedIn&&!s.boardedBus);
     const families={};
     list.forEach(s=>{const fn=s.familyNum||"_individuals";if(!families[fn])families[fn]=[];families[fn].push(s);});
     return{bus:b,config:bc,list,families};
@@ -612,11 +616,11 @@ const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,boardingMode,on
         <button onClick={()=>onSetMode("open")} style={{padding:"14px 12px",borderRadius:10,border:"2px solid",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:isOpen?"rgba(251,191,36,0.12)":"transparent",borderColor:isOpen?"rgba(251,191,36,0.55)":"rgba(255,255,255,0.08)",color:isOpen?"#FBBF24":t.textDim}}><div style={{fontSize:24,marginBottom:4}}>🔓</div>مفتوح</button>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        <button onClick={()=>onSetMode("roundtrip-outbound")} style={{padding:"14px 12px",borderRadius:10,border:"2px solid",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:isOutbound?"rgba(59,130,246,0.12)":"transparent",borderColor:isOutbound?"rgba(59,130,246,0.55)":"rgba(255,255,255,0.08)",color:isOutbound?"#60A5FA":t.textDim}}><div style={{fontSize:24,marginBottom:4}}>🕋</div>ذهاب (للحرم)</button>
-        <button onClick={()=>onSetMode("roundtrip-return")} disabled={!isOutbound&&!isReturn} style={{padding:"14px 12px",borderRadius:10,border:"2px solid",cursor:!isOutbound&&!isReturn?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:isReturn?"rgba(168,85,247,0.12)":"transparent",borderColor:isReturn?"rgba(168,85,247,0.55)":"rgba(255,255,255,0.08)",color:isReturn?"#A78BFA":t.textDim,opacity:!isOutbound&&!isReturn?0.4:1}}><div style={{fontSize:24,marginBottom:4}}>↩️</div>عودة (تسجيل الراجعين)</button>
+        <button onClick={()=>onSetMode("roundtrip-outbound")} style={{padding:"14px 12px",borderRadius:10,border:"2px solid",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:isOutbound?"rgba(59,130,246,0.12)":"transparent",borderColor:isOutbound?"rgba(59,130,246,0.55)":"rgba(255,255,255,0.08)",color:isOutbound?"#60A5FA":t.textDim}}><div style={{fontSize:24,marginBottom:4}}>🚌</div>رحلة ذهاب وعودة</button>
+        <button onClick={()=>onSetMode("roundtrip-return")} disabled={!isOutbound&&!isReturn} style={{padding:"14px 12px",borderRadius:10,border:"2px solid",cursor:!isOutbound&&!isReturn?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:isReturn?"rgba(168,85,247,0.12)":"transparent",borderColor:isReturn?"rgba(168,85,247,0.55)":"rgba(255,255,255,0.08)",color:isReturn?"#A78BFA":t.textDim,opacity:!isOutbound&&!isReturn?0.4:1}}><div style={{fontSize:24,marginBottom:4}}>↩️</div>تسجيل العودة</button>
       </div>
-      {isOutbound&&<div style={{marginTop:10,padding:"8px 12px",borderRadius:8,background:"rgba(59,130,246,0.08)",border:"1px solid rgba(59,130,246,0.2)",fontSize:11,color:"#60A5FA"}}>📌 مرحلة الذهاب: سجّل الحجاج الذاهبين. عند الوصول للحرم، اضغط "عودة" لتسجيل الراجعين.</div>}
-      {isReturn&&<div style={{marginTop:10,padding:"8px 12px",borderRadius:8,background:"rgba(168,85,247,0.08)",border:"1px solid rgba(168,85,247,0.2)",fontSize:11,color:"#A78BFA"}}>📌 مرحلة العودة: يظهر فقط من ذهبوا. اضغط "عادي" لإنهاء التفويج.</div>}
+      {isOutbound&&<div style={{marginTop:10,padding:"8px 12px",borderRadius:8,background:"rgba(59,130,246,0.08)",border:"1px solid rgba(59,130,246,0.2)",fontSize:11,color:"#60A5FA"}}>📌 مرحلة الذهاب: سجّل الحجاج الذاهبين في باصاتهم. عند الانتهاء، اضغط "تسجيل العودة".</div>}
+      {isReturn&&<div style={{marginTop:10,padding:"8px 12px",borderRadius:8,background:"rgba(168,85,247,0.08)",border:"1px solid rgba(168,85,247,0.2)",fontSize:11,color:"#A78BFA"}}>📌 مرحلة العودة (تفويج مفتوح): أي حاج ذهب يمكنه ركوب أي باص. اضغط "عادي" لإنهاء التفويج.</div>}
     </div>}
     {isReturn&&totalNotReturned>0&&<div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:12,padding:14,marginBottom:16}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -633,16 +637,14 @@ const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,boardingMode,on
         const bc=busConfigs.find(c=>c.id===bus.id);
         const chk=bus.students.filter(s=>s.checkedIn).length;
         let totalS,pct,label;
-        if(isOpen){
-          totalS=BUS_CAPACITY;pct=Math.round((chk/BUS_CAPACITY)*100);label="الركاب الحاليون";
-        } else if(isReturn){
-          // In return mode: total = those who went out, checked = those returned
-          const wentOut=bus.students.filter(s=>s.wentOut).length;
-          totalS=wentOut;pct=wentOut>0?Math.round((chk/wentOut)*100):0;label="عاد من الذهاب";
+        if(isOpen||isReturn){
+          totalS=BUS_CAPACITY;pct=Math.round((chk/BUS_CAPACITY)*100);label=isReturn?"العائدون في هذا الباص":"الركاب الحاليون";
         } else {
           totalS=bus.students.length;pct=totalS>0?Math.round((chk/totalS)*100):0;label=isOutbound?"حاضر للذهاب":"الحضور";
         }
-        const notReturned=isReturn?bus.students.filter(s=>s.wentOut&&!s.checkedIn).length:0;
+        // "Not returned" for this bus = its HOME pilgrims (across all buses) who went out but haven't been boarded for return anywhere
+        const allHome=busesData.flatMap(b2=>b2.students).filter(s=>s.homeBusId===bus.id);
+        const notReturned=isReturn?allHome.filter(s=>s.wentOut&&!s.checkedIn&&!s.boardedBus).length:0;
         return(
         <div key={bus.id} onClick={()=>onSelectBus(bus.id)} style={{background:t.bgCard,borderRadius:16,border:`1px solid ${t.border}`,padding:20,cursor:"pointer",position:"relative",overflow:"hidden"}}
           onMouseEnter={e=>{e.currentTarget.style.background=t.bgCardHover;}} onMouseLeave={e=>{e.currentTarget.style.background=t.bgCard;}}>
@@ -717,24 +719,18 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
   // Visibility and counters logic per mode:
   //   open: show only checked-in (boarded); capacity X/55
   //   outbound: show all assigned; counter = checkedIn/assigned (these will become "wentOut" when mode switches to return)
-  //   return: show only those with wentOut=true (and didn't go = wentOut=false visible too as struck-out);
-  //           counter = returned (checkedIn)/wentOut
+  //   return: works like OPEN MODE — visible = those checked in here; capacity X/55; cross-boarding enabled.
+  //           Available pool = pilgrims who went out (wentOut=true) and haven't boarded anywhere yet on return.
   //   normal: show all assigned; counter = checkedIn/assigned
   const checkedInStudents=students.filter(s=>s.checkedIn);
   const boardedCount=checkedInStudents.length;
 
   let visibleStudents,checked,total,isFull;
-  if(isOpen){
+  if(isOpen||isReturn){
+    // OPEN and RETURN both behave the same: show only checked-in, capacity-limited
     visibleStudents=checkedInStudents;
     checked=boardedCount;total=BUS_CAPACITY;
     isFull=boardedCount>=BUS_CAPACITY;
-  } else if(isReturn){
-    // Show those who went out + those who didn't go (struck out)
-    visibleStudents=students;
-    const wentOutCount=students.filter(s=>s.wentOut).length;
-    checked=students.filter(s=>s.wentOut&&s.checkedIn).length;
-    total=wentOutCount;
-    isFull=false;
   } else {
     // normal or outbound
     visibleStudents=students;
@@ -755,8 +751,6 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
       if(onRemoveCrossBoarded){onRemoveCrossBoarded(pid,busData.id);}
       return;
     }
-    // In return mode: only allow toggling those who went out
-    if(isReturn&&!st.wentOut){return;}
     const now=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
     if(!st.checkedIn){setScanAnim(pid);setTimeout(()=>setScanAnim(null),800);}
     onUpdate({...busData,students:students.map(s=>s.id===pid?{...s,checkedIn:!s.checkedIn,time:s.checkedIn?null:now,method:s.checkedIn?null:"manual",addedBy:s.checkedIn?"":(currentUserName||"")}:s)});
@@ -769,10 +763,6 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
       memberIds=students.filter(s=>s.familyNum===headOrFamNum).map(s=>s.id);
     } else {
       memberIds=students.filter(s=>s.familyNum&&s.familyNum===headOrFamNum.familyNum).map(s=>s.id);
-    }
-    // In return mode, filter to only those who went out
-    if(isReturn){
-      memberIds=memberIds.filter(mid=>{const m=students.find(s=>s.id===mid);return m&&m.wentOut;});
     }
     if(allMembers){
       onUpdate({...busData,students:students.map(s=>memberIds.includes(s.id)?{...s,checkedIn:true,time:now,method:"manual",addedBy:currentUserName||""}:s)});
@@ -805,11 +795,6 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
   const resetCheckins=()=>{if(!canCheckin)return;onUpdate({...busData,students:students.map(s=>({...s,checkedIn:false,time:null,method:null,addedBy:""})),status:"stopped",destination:""});};
 
   const sorted=[...visibleStudents].sort((a,b)=>{
-    // In return mode: "didn't go" go to bottom
-    if(isReturn){
-      if(a.wentOut&&!b.wentOut)return -1;
-      if(!a.wentOut&&b.wentOut)return 1;
-    }
     if(a.type==="admin"&&b.type!=="admin")return 1;
     if(b.type==="admin"&&a.type!=="admin")return -1;
     if(a.isHead&&!b.isHead)return -1;
@@ -820,18 +805,22 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
   const filteredHome=filtered.filter(s=>s.homeBusId===busData.id);
   const filteredCross=filtered.filter(s=>s.homeBusId!==busData.id);
 
-  // AVAILABLE LIST for cross-boarding (only in open mode): ALL pilgrims from ALL buses
-  const allAvailable=isOpen&&allBusesData
+  // AVAILABLE LIST for cross-boarding (open and return modes)
+  // In OPEN: all non-admin pilgrims not already boarded somewhere
+  // In RETURN: only pilgrims who went out (wentOut=true) and haven't been boarded for return yet
+  const allAvailable=(isOpen||isReturn)&&allBusesData
     ? allBusesData.flatMap(b=>b.students)
         .filter(s=>{
           if(students.find(x=>x.id===s.id))return false;
           if(s.boardedBus)return false;
           if(s.type==="admin")return false;
+          if(isReturn&&!s.wentOut)return false; // only those who went out are eligible on return
+          if(isReturn&&s.checkedIn)return false; // already boarded for return in their home bus
           return true;
         })
     : [];
 
-  // Who from my bus went to other buses (open mode only)
+  // Who from my bus went to other buses (open & return modes)
   const homeWentAway=allBusesData
     ? allBusesData.flatMap(b=>b.students).filter(s=>s.homeBusId===busData.id&&s.boardedBus)
     : [];
@@ -842,7 +831,13 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
     : [];
 
   // Who went out but hasn't returned yet (return mode)
-  const notReturned=students.filter(s=>s.wentOut&&!s.checkedIn);
+  // Returns = checkedIn anywhere (home or cross-board target) OR boardedBus is set (boarded a different bus)
+  // Not returned = wentOut=true AND not checkedIn anywhere AND no boardedBus
+  // Look at this bus's HOME pilgrims (across all data, in case they're cross-boarded elsewhere)
+  const myHomePilgrims=allBusesData
+    ? allBusesData.flatMap(b=>b.students).filter(s=>s.homeBusId===busData.id)
+    : students.filter(s=>s.homeBusId===busData.id);
+  const notReturned=myHomePilgrims.filter(s=>s.wentOut&&!s.checkedIn&&!s.boardedBus);
   // Group by family for the "didn't return" list
   const notReturnedFamilies={};
   notReturned.forEach(s=>{
@@ -892,30 +887,22 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
     const isHead=s.isHead;const isAdm=s.type==="admin";const isCross=s.homeBusId!==busData.id;
     const wentAway=s.boardedBus&&!isCross;const homeBc=isCross?allBusConfigs.find(b=>b.id===s.homeBusId):null;
     const boardedBc=wentAway?allBusConfigs.find(b=>b.id===s.boardedBus):null;
-    // In return mode: this person didn't go on the outbound trip
-    const didntGo=isReturn&&!s.wentOut&&!isAdm;
-    // In return mode: this person went out but didn't return yet
-    const didntReturn=isReturn&&s.wentOut&&!s.checkedIn;
     let bg,bc2,bw;
-    if(didntGo){bg="rgba(100,116,139,0.08)";bc2="rgba(100,116,139,0.3)";bw="1px";}
-    else if(didntReturn){bg="rgba(239,68,68,0.08)";bc2="rgba(239,68,68,0.3)";bw="1px";}
-    else if(wentAway){bg="rgba(200,169,81,0.15)";bc2="rgba(200,169,81,0.4)";bw="1px";}
+    if(wentAway){bg="rgba(200,169,81,0.15)";bc2="rgba(200,169,81,0.4)";bw="1px";}
     else if(isCross){bg="rgba(251,191,36,0.08)";bc2="rgba(251,191,36,0.4)";bw="1px";}
     else if(isAdm){bg=s.checkedIn?"rgba(139,92,246,0.15)":"rgba(139,92,246,0.05)";bc2="rgba(139,92,246,0.3)";bw="1px";}
     else if(isHead){bg=s.checkedIn?`${busConfig.color}18`:"rgba(200,169,81,0.06)";bc2="rgba(200,169,81,0.6)";bw="2px";}
     else{bg=s.checkedIn?`${busConfig.color}18`:t.bgCard;bc2=s.checkedIn?busConfig.color+"40":t.border;bw="1px";}
-    const clickable=!wentAway&&canCheckin&&!didntGo;
-    return(<div key={s.id} onClick={()=>{if(!clickable)return;if(isHead&&!isCross){setFamilyCheckinModal(s);return;}togglePilgrim(s.id);}} style={{padding:"10px 12px",borderRadius:10,cursor:clickable?"pointer":"default",userSelect:"none",background:bg,border:`${bw} solid ${bc2}`,transform:scanAnim===s.id?"scale(1.06)":"scale(1)",opacity:wentAway||didntGo?0.6:1}}>
+    const clickable=!wentAway&&canCheckin;
+    return(<div key={s.id} onClick={()=>{if(!clickable)return;if(isHead&&!isCross){setFamilyCheckinModal(s);return;}togglePilgrim(s.id);}} style={{padding:"10px 12px",borderRadius:10,cursor:clickable?"pointer":"default",userSelect:"none",background:bg,border:`${bw} solid ${bc2}`,transform:scanAnim===s.id?"scale(1.06)":"scale(1)",opacity:wentAway?0.6:1}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <span style={{fontSize:13,fontWeight:600,color:s.checkedIn||wentAway?t.text:t.textMuted,textDecoration:didntGo?"line-through":"none"}}>{isAdm?"👤 ":isHead&&!isCross?"👑 ":isCross?"🔄 ":s.familyNum?"👥 ":""}{s.name}</span>
+        <span style={{fontSize:13,fontWeight:600,color:s.checkedIn||wentAway?t.text:t.textMuted}}>{isAdm?"👤 ":isHead&&!isCross?"👑 ":isCross?"🔄 ":s.familyNum?"👥 ":""}{s.name}</span>
         <div style={{display:"flex",alignItems:"center",gap:4}}>
           {canCheckin&&!wentAway&&!isAdm&&<button onClick={e=>{e.stopPropagation();setEditPilgrimState(s);setEpName(s.name);setEpPhone(s.phone||"");setEpRoom(s.room||"");setEpFamilyNum(s.familyNum||"");setEpIsHead(!!s.isHead);}} style={{background:"rgba(59,130,246,0.15)",border:"none",color:"#60A5FA",borderRadius:4,padding:"2px 6px",fontSize:9,cursor:"pointer",fontFamily:"inherit"}}>✏️</button>}
-          <span style={{fontSize:16}}>{didntGo?"🚫":didntReturn?"⏳":wentAway?"🚌":s.checkedIn?"✅":"⬜"}</span>
+          <span style={{fontSize:16}}>{wentAway?"🚌":s.checkedIn?"✅":"⬜"}</span>
         </div>
       </div>
       {isAdm&&<div style={{fontSize:9,color:"#A78BFA",marginTop:2,fontWeight:700}}>إداري</div>}
-      {didntGo&&<div style={{fontSize:10,color:"#64748B",marginTop:2,fontWeight:700}}>🚫 لم يذهب</div>}
-      {didntReturn&&<div style={{fontSize:10,color:"#EF4444",marginTop:2,fontWeight:700}}>⏳ لم يعد بعد</div>}
       {isCross&&homeBc&&<div style={{fontSize:10,color:"#FBBF24",marginTop:2,fontWeight:600}}>📍 من {homeBc.name}</div>}
       {wentAway&&boardedBc&&<div style={{fontSize:10,color:"#C8A951",marginTop:2,fontWeight:700}}>🚌 ركب {boardedBc.name}</div>}
       {s.familyNum&&!isCross&&<div style={{fontSize:10,color:"#C8A951",marginTop:2,fontWeight:600}}>{isHead?"👑 ":"👥 "}عائلة {s.familyNum}</div>}
@@ -953,11 +940,14 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
         <div style={{fontSize:11,color:t.textMuted}}>سجّل الحجاج الذاهبين. سيتم حفظهم لمرحلة العودة.</div>
       </div>}
       {isReturn&&canCheckin&&<div style={{marginBottom:12,padding:"12px 14px",borderRadius:10,background:"rgba(168,85,247,0.1)",border:"1px solid rgba(168,85,247,0.3)"}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-          <div style={{fontSize:12,color:"#A78BFA",fontWeight:700}}>↩️ مرحلة العودة</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+          <div style={{fontSize:12,color:"#A78BFA",fontWeight:700}}>↩️ مرحلة العودة (تفويج مفتوح)</div>
+          <Btn onClick={()=>{setCrossBoardModal(true);setCrossBoardSearch("");setCrossBoardFilterBus("");}} color="#A78BFA" small disabled={isFull} style={{color:"#fff"}}>{isFull?"ممتلئ":"+ إضافة راكب"}</Btn>
         </div>
-        <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>سجّل من عاد. من لم يذهب يظهر مشطوباً (لا يمكن تسجيله).</div>
-        <Btn onClick={()=>setNotReturnedModal(true)} color="rgba(239,68,68,0.2)" small style={{color:"#EF4444",border:"1px solid rgba(239,68,68,0.3)",fontSize:11,width:"100%"}}>⚠️ لم يعد بعد ({notReturned.length})</Btn>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+          <Btn onClick={()=>setWentAwayModal(true)} color="rgba(200,169,81,0.2)" small style={{color:"#C8A951",border:"1px solid rgba(200,169,81,0.3)",fontSize:11}}>🚌 ركبوا باصات أخرى ({homeWentAway.length})</Btn>
+          <Btn onClick={()=>setNotReturnedModal(true)} color="rgba(239,68,68,0.15)" small style={{color:"#EF4444",border:"1px solid rgba(239,68,68,0.3)",fontSize:11}}>⏳ لم يعد بعد ({notReturned.length})</Btn>
+        </div>
       </div>}
       {canChangeStatus&&<div style={{background:t.bgCard,borderRadius:14,border:`1px solid ${t.border}`,padding:16,marginBottom:16}}>
         <div style={{fontSize:12,fontWeight:700,color:t.textDim,marginBottom:12}}>الحالة {busData.status==="commuting"&&busData.destination&&<span style={{color:"#22C55E"}}>← {busData.destination}</span>}</div>
@@ -966,7 +956,7 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
         <div style={{background:`linear-gradient(135deg,${busConfig.color}18,${busConfig.color}08)`,borderRadius:14,border:`1px solid ${busConfig.color}30`,padding:20,textAlign:"center"}}>
           <div style={{fontSize:48,fontWeight:900,lineHeight:1,fontFamily:"'JetBrains Mono',monospace"}}>{checked}<span style={{fontSize:20,color:t.textDim}}>/{total}</span></div>
-          <div style={{fontSize:12,color:t.textMuted,marginTop:8}}>{isReturn?(total===0?"لا يوجد ذاهبون":checked===total?"✅ الجميع عاد":`${total-checked} لم يعد`):isOutbound?(total===0?"لا يوجد ركاب":checked===total?"✅ الجميع حاضر":`${total-checked} متبقي`):(checked===total&&total>0?"✅ الجميع":total===0?"لا يوجد":`${total-checked} متبقي`)}</div>
+          <div style={{fontSize:12,color:t.textMuted,marginTop:8}}>{isReturn?(checked===0?"لا يوجد ركاب بعد":isFull?"✅ ممتلئ":`${BUS_CAPACITY-checked} مقعد متاح`):isOpen?(checked===0?"لا يوجد ركاب بعد":isFull?"✅ ممتلئ":`${BUS_CAPACITY-checked} مقعد متاح`):isOutbound?(total===0?"لا يوجد ركاب":checked===total?"✅ الجميع حاضر":`${total-checked} متبقي`):(checked===total&&total>0?"✅ الجميع":total===0?"لا يوجد":`${total-checked} متبقي`)}</div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {canManageFamilies&&<Btn onClick={()=>setFamilyModal(true)} color="#8B5CF6" small style={{flex:1}}>👨‍👩‍👧‍👦 العائلات</Btn>}
@@ -979,7 +969,7 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
       <div style={{marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontSize:14,fontWeight:700}}>الركاب</div><div style={{display:"flex",gap:12,fontSize:12,color:t.textDim}}><span>🟢 {checked}</span><span>⚫ {total-checked}</span></div></div>
       <Input value={searchQ} onChange={setSearchQ} placeholder="🔍 ابحث..." style={{marginBottom:12}}/>
       {total===0?<div style={{padding:40,textAlign:"center",color:t.textDim,fontSize:13,background:t.bgCard,borderRadius:12,marginBottom:16}}>
-        {isOpen?"🔓 وضع التفويج المفتوح — اضغط '+ إضافة راكب' لبدء تسجيل الركاب":isReturn?"↩️ لا يوجد أحد في الذهاب — لا حجاج لتسجيل عودتهم":"لا يوجد ركاب"}
+        {isOpen?"🔓 وضع التفويج المفتوح — اضغط '+ إضافة راكب' لبدء تسجيل الركاب":isReturn?"↩️ مرحلة العودة — اضغط '+ إضافة راكب' لتسجيل العائدين":"لا يوجد ركاب"}
       </div>:(
         <><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(155px,1fr))",gap:6,marginBottom:filteredCross.length>0?12:16}}>{filteredHome.map(renderCard)}</div>
           {filteredCross.length>0&&<><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><div style={{flex:1,height:1,background:"rgba(251,191,36,0.3)"}}/><div style={{fontSize:11,color:"#FBBF24",fontWeight:700,padding:"4px 10px",background:"rgba(251,191,36,0.1)",borderRadius:20}}>🔄 ({filteredCross.length})</div><div style={{flex:1,height:1,background:"rgba(251,191,36,0.3)"}}/></div>
@@ -1397,9 +1387,9 @@ function MainApp() {
   const updateBusConfigsFn=(configs)=>{setBusConfigs(configs);saveBusConfigs(configs);};
 
   // Helper: returns the count that matters for capacity check
-  // In open mode: only checked-in students count toward capacity
+  // In open/return mode: only checked-in students count toward capacity
   // In other modes: all assigned students count
-  const getBusCount=(busStudents)=>settings.boardingMode==="open"
+  const getBusCount=(busStudents)=>(settings.boardingMode==="open"||settings.boardingMode==="roundtrip-return")
     ? busStudents.filter(s=>s.checkedIn).length
     : busStudents.length;
 
@@ -1423,8 +1413,9 @@ function MainApp() {
           // Start fresh outbound; clear any prior round-trip data
           students=students.filter(s=>s.homeBusId===b.id).map(s=>({...s,boardedBus:null,wentOut:false,checkedIn:false,time:null,method:null,addedBy:""}));
         } else if(newMode==="roundtrip-return"&&oldMode==="roundtrip-outbound"){
-          // Lock in: those checked in are the ones who went out; reset checkedIn for return tracking
-          students=students.map(s=>({...s,wentOut:!!s.checkedIn,checkedIn:false,time:null,method:null,addedBy:""}));
+          // Lock in: those checked in are the ones who went out; reset for return phase.
+          // Return mode behaves like open mode, so we clear checkedIn and any boardedBus too.
+          students=students.map(s=>({...s,wentOut:!!s.checkedIn,checkedIn:false,boardedBus:null,time:null,method:null,addedBy:""}));
         } else if(newMode==="open"){
           // From any mode: clear wentOut just in case
           students=students.map(s=>({...s,wentOut:false}));
@@ -1456,8 +1447,9 @@ function MainApp() {
   const transferPilgrim=(fromBus,pid,toBus)=>{setBusesData(prev=>{const from=prev.find(b=>b.id===fromBus);const p=from?.students.find(s=>s.id===pid);if(!p)return prev;const target=prev.find(b=>b.id===toBus);if(getBusCount(target.students)>=BUS_CAPACITY)return prev;const u=prev.map(b=>{if(b.id===fromBus){const nb={...b,students:b.students.filter(s=>s.id!==pid)};persistBus(fromBus,nb);return nb;}if(b.id===toBus){const nb={...b,students:[...b.students,{...p,homeBusId:toBus,checkedIn:false,time:null,familyNum:"",isHead:false}]};persistBus(toBus,nb);return nb;}return b;});return u;});};
   const bulkImport=(entries)=>{setBusesData(prev=>{const nb=prev.map(b=>({...b,students:[...b.students]}));entries.forEach(e=>{const bus=nb.find(b=>b.id===e.busId);if(!bus||bus.students.length>=BUS_CAPACITY)return;bus.students.push({id:nid(),name:e.name,type:e.type||"pilgrim",room:e.room||"",phone:"",familyNum:e.familyNum||"",isHead:!!e.isHead,checkedIn:false,time:null,method:null,homeBusId:e.busId,boardedBus:null});});nb.forEach(b=>persistBus(b.id,b));return nb;});};
   const crossBoardPilgrim=(pid,homeBusId,targetBusId,addedBy)=>{setBusesData(prev=>{const home=prev.find(b=>b.id===homeBusId);const p=home?.students.find(s=>s.id===pid);if(!p)return prev;const target=prev.find(b=>b.id===targetBusId);
-    const isOpen=settings.boardingMode==="open";
-    const targetCount=isOpen
+    const mode=settings.boardingMode;
+    const isCapacityMode=mode==="open"||mode==="roundtrip-return";
+    const targetCount=isCapacityMode
       ? target.students.filter(s=>s.checkedIn).length
       : target.students.length;
     if(targetCount>=BUS_CAPACITY)return prev;
@@ -1571,7 +1563,7 @@ function MainApp() {
         <div style={{fontSize:14,marginBottom:8}}>
           {pendingMode==="normal"&&"إنهاء التفويج الحالي والعودة للوضع العادي؟"}
           {pendingMode==="open"&&"تغيير الوضع إلى التفويج المفتوح؟ سيتم إنهاء التفويج الحالي."}
-          {pendingMode==="roundtrip-outbound"&&"بدء تفويج ذهاب جديد؟ سيتم مسح أي بيانات تفويج سابقة."}
+          {pendingMode==="roundtrip-outbound"&&"بدء رحلة ذهاب وعودة جديدة؟ سيتم مسح أي بيانات تفويج سابقة."}
         </div>
         <div style={{fontSize:12,color:t.textDim,marginBottom:20,padding:"8px 12px",background:"rgba(239,68,68,0.08)",borderRadius:8,border:"1px solid rgba(239,68,68,0.2)"}}>⚠️ سيتم مسح حالة الحضور الحالية لجميع الباصات.</div>
         <div style={{display:"flex",gap:8}}><Btn onClick={()=>setPendingMode(null)} color="transparent" style={{flex:1,border:`1px solid ${t.border}`,color:t.textMuted}}>إلغاء</Btn><Btn onClick={()=>{setBoardingMode(pendingMode);setPendingMode(null);}} color="#22C55E" style={{flex:1}}>✅ نعم، متابعة</Btn></div>
