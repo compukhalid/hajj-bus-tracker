@@ -3,7 +3,8 @@ import {
   saveBusData, saveBusConfigs, saveSettings,
   listenToAllBuses, listenToBusConfigs, listenToSettings,
   saveCar, deleteCar as deleteCarFb, listenToCars, addCarHistory, listenToCarHistory,
-  saveCarTracking, listenToCarTracking, saveSavedNames, listenToSavedNames, uploadImage
+  saveCarTracking, listenToCarTracking, saveSavedNames, listenToSavedNames, uploadImage,
+  saveCarRequest, listenToCarRequests, closeCarRequest, listenToCarRequestsLog
 } from "./firebase";
 
 /* ═══════ CONSTANTS ═══════ */
@@ -26,6 +27,20 @@ const INITIAL_BUS_DATA = INITIAL_BUSES.map(b => ({
 }));
 
 let _pid = Date.now(); const nid = () => `P${++_pid}`;
+
+/* ═══════ COMMITTEES & VEHICLE TYPES ═══════ */
+const DEFAULT_COMMITTEES = [
+  "الإدارة","لجنة البرامج والإرشاد","لجنة التغذية والضيافة",
+  "لجنة الدعم والمساندة","لجنة المعلومات","لجنة التفويج والطريق",
+  "اللجنة النسائية","اللجنة الإعلامية"
+];
+const VEHICLE_TYPES = [
+  { value: "car_with_driver", label: "🚗 سيارة مع سائق" },
+  { value: "car_without_driver", label: "🔑 سيارة بدون سائق" },
+  { value: "refrigerated_truck", label: "❄️ شاحنة مبردة" },
+  { value: "bus", label: "🚌 باص" }
+];
+const vehicleLabel = (val) => (VEHICLE_TYPES.find(v => v.value === val)?.label) || val || "—";
 
 /* ═══════ PIN VALIDATION ═══════ */
 // Returns array of {pin, label} for all PINs currently in use, optionally excluding one
@@ -111,6 +126,7 @@ const LoginPage=({onLogin,settings,busConfigs,theme,toggleTheme})=>{
         <button onClick={go} style={{width:"100%",padding:16,borderRadius:12,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#C8A951,#A67C2E)",color:"#0B1120",fontSize:20,fontWeight:800,marginTop:16,fontFamily:"inherit"}}>دخول</button>
       </div>
       <button onClick={()=>{setMode(mode==="supervisor"?"admin":"supervisor");setPin("");setError("");}} style={{background:"none",border:"none",color:t.textDim,fontSize:14,marginTop:24,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}>{mode==="supervisor"?"دخول الإدارة / مشرف السيارات":"دخول المشرف"}</button>
+      <a href="/request-car" style={{marginTop:20,padding:"14px 28px",borderRadius:12,background:"rgba(6,182,212,0.15)",border:"1px solid rgba(6,182,212,0.35)",color:"#06B6D4",fontSize:15,fontWeight:700,cursor:"pointer",textDecoration:"none",display:"inline-flex",alignItems:"center",gap:8,fontFamily:"inherit"}}>🚗 طلب وسيلة نقل</a>
       <div style={{marginTop:32,fontSize:13,color:t.textDim,textAlign:"center",opacity:0.7}}>برمجة وتصميم / خالد محمود المرزوقي</div>
     </div>
   );
@@ -249,6 +265,10 @@ const BusMgmtPage=({busConfigs,onUpdate,settings,onUpdateSettings,onBack,t})=>{
 
 /* ═══════ CAR MANAGEMENT ═══════ */
 const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers:rawSavedUsers,savedReceivers,onSaveUsers,onSaveReceivers,onBack,t,readOnly,baseUrl})=>{
+  const[tab,setTab]=useState("cars"); // "cars" | "requests" | "log"
+  const[carRequests,setCarRequests]=useState([]);
+  const[carRequestsLog,setCarRequestsLog]=useState([]);
+  const[closeConfirm,setCloseConfirm]=useState(null);
   const[addModal,setAddModal]=useState(false);const[carNum,setCarNum]=useState("");const[plate,setPlate]=useState("");const[driver,setDriver]=useState("");
   const[driverImg,setDriverImg]=useState(null);const[carImg,setCarImg]=useState(null);const[uploading,setUploading]=useState(false);
   const[useModal,setUseModal]=useState(null);const[userName,setUserName]=useState("");const[userPhone,setUserPhone]=useState("");
@@ -263,6 +283,7 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers:rawSavedU
   const savedUsers=(rawSavedUsers||[]).map(u=>typeof u==="string"?{name:u,phone:""}:u).filter(u=>u&&u.name);
 
   useEffect(()=>{if(histModal){const unsub=listenToCarHistory(histModal,setHistory);return()=>unsub();}},[histModal]);
+  useEffect(()=>{const u1=listenToCarRequests(setCarRequests);const u2=listenToCarRequestsLog(setCarRequestsLog);return()=>{u1();u2();};},[]);
 
   // Listen to all active car tracking locations
   useEffect(()=>{
@@ -329,9 +350,65 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers:rawSavedU
 
   return(
     <div>
-      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
         <button onClick={onBack} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:t.textMuted,borderRadius:10,padding:"8px 14px",cursor:"pointer",fontSize:14,fontWeight:600,fontFamily:"inherit"}}>→ رجوع</button>
-        <div style={{flex:1}}><div style={{fontSize:20,fontWeight:800}}>🚗 إدارة السيارات</div><div style={{fontSize:12,color:t.textDim}}>{cars.length} سيارة — {cars.filter(c=>c.status==="in-use").length} مستخدمة</div></div>
+        <div style={{flex:1}}><div style={{fontSize:20,fontWeight:800}}>🚗 إدارة السيارات</div></div>
+      </div>
+      <div style={{display:"flex",gap:4,marginBottom:16,background:t.bgCard,padding:4,borderRadius:10,border:`1px solid ${t.border}`}}>
+        <button onClick={()=>setTab("cars")} style={{flex:1,padding:"10px 12px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,fontSize:13,fontFamily:"inherit",background:tab==="cars"?"rgba(6,182,212,0.15)":"transparent",color:tab==="cars"?"#06B6D4":t.textDim}}>🚗 السيارات ({cars.length})</button>
+        <button onClick={()=>setTab("requests")} style={{flex:1,padding:"10px 12px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,fontSize:13,fontFamily:"inherit",background:tab==="requests"?"rgba(251,191,36,0.15)":"transparent",color:tab==="requests"?"#FBBF24":t.textDim,position:"relative"}}>📋 الطلبات{carRequests.length>0&&<span style={{position:"absolute",top:2,right:2,background:"#EF4444",color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:800}}>{carRequests.length}</span>}</button>
+        <button onClick={()=>setTab("log")} style={{flex:1,padding:"10px 12px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,fontSize:13,fontFamily:"inherit",background:tab==="log"?"rgba(139,92,246,0.15)":"transparent",color:tab==="log"?"#A78BFA":t.textDim}}>📚 السجل ({carRequestsLog.length})</button>
+      </div>
+
+      {tab==="requests"&&<div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div style={{fontSize:14,fontWeight:700,color:t.textMuted}}>الطلبات المفتوحة ({carRequests.length})</div>
+          <div style={{fontSize:11,color:t.textDim}}>الرابط العام: {baseUrl}/request-car</div>
+        </div>
+        {carRequests.length===0?<div style={{padding:40,textAlign:"center",color:t.textDim,fontSize:13,background:t.bgCard,borderRadius:12,border:`1px solid ${t.border}`}}>لا توجد طلبات حالياً</div>:
+        <div style={{display:"grid",gap:10}}>{carRequests.map(r=>(
+          <div key={r.id} style={{background:t.bgCard,borderRadius:12,border:`1px solid ${t.border}`,padding:16,borderRightWidth:3,borderRightColor:"#FBBF24"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:8,flexWrap:"wrap"}}>
+              <div>
+                <div style={{fontSize:15,fontWeight:800}}>{r.name}</div>
+                <a href={`tel:${r.phone}`} style={{fontSize:12,color:"#60A5FA",textDecoration:"none"}}>📱 {r.phone}</a>
+              </div>
+              <span style={{fontSize:11,padding:"4px 10px",borderRadius:6,background:"rgba(251,191,36,0.15)",color:"#FBBF24",fontWeight:700}}>{vehicleLabel(r.vehicleType)}</span>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8,marginBottom:10}}>
+              <div style={{fontSize:11,color:t.textDim}}>🏛️ <strong style={{color:t.text}}>{r.committee}</strong></div>
+              <div style={{fontSize:11,color:t.textDim}}>📅 <strong style={{color:t.text}}>{r.dateTime?new Date(r.dateTime).toLocaleString("ar-BH",{dateStyle:"short",timeStyle:"short"}):"—"}</strong></div>
+              <div style={{fontSize:11,color:t.textDim}}>📍 <strong style={{color:t.text}}>{r.destination}</strong></div>
+              <div style={{fontSize:11,color:t.textDim}}>⏱️ <strong style={{color:t.text}}>{r.duration}</strong></div>
+            </div>
+            {r.notes&&<div style={{fontSize:12,color:t.textMuted,padding:"8px 10px",background:"rgba(255,255,255,0.03)",borderRadius:6,marginBottom:10}}>💬 {r.notes}</div>}
+            <div style={{fontSize:10,color:t.textDim,marginBottom:10}}>⏰ ورد في: {r.createdAt?new Date(r.createdAt).toLocaleString("ar-BH"):""}</div>
+            {!readOnly&&<Btn onClick={()=>setCloseConfirm(r)} color="#22C55E" small style={{width:"100%"}}>✅ إغلاق الحالة</Btn>}
+          </div>
+        ))}</div>}
+      </div>}
+
+      {tab==="log"&&<div>
+        <div style={{fontSize:14,fontWeight:700,color:t.textMuted,marginBottom:12}}>الطلبات المغلقة ({carRequestsLog.length})</div>
+        {carRequestsLog.length===0?<div style={{padding:40,textAlign:"center",color:t.textDim,fontSize:13,background:t.bgCard,borderRadius:12,border:`1px solid ${t.border}`}}>لا يوجد سجل</div>:
+        <div style={{display:"grid",gap:8}}>{carRequestsLog.map(r=>(
+          <div key={r.id} style={{background:t.bgCard,borderRadius:10,border:`1px solid ${t.border}`,padding:12,opacity:0.85}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:8,flexWrap:"wrap"}}>
+              <div style={{fontSize:13,fontWeight:700}}>{r.name} <span style={{fontSize:10,color:t.textDim,fontWeight:400}}>({r.phone})</span></div>
+              <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:"rgba(139,92,246,0.15)",color:"#A78BFA",fontWeight:700}}>{vehicleLabel(r.vehicleType)}</span>
+            </div>
+            <div style={{fontSize:10,color:t.textDim,display:"flex",gap:10,flexWrap:"wrap"}}>
+              <span>🏛️ {r.committee}</span><span>📍 {r.destination}</span><span>⏱️ {r.duration}</span>
+            </div>
+            {r.notes&&<div style={{fontSize:10,color:t.textDim,marginTop:4}}>💬 {r.notes}</div>}
+            <div style={{fontSize:9,color:t.textDim,marginTop:6,borderTop:`1px solid ${t.border}`,paddingTop:6}}>✅ أُغلق: {r.closedAt?new Date(r.closedAt).toLocaleString("ar-BH"):""}</div>
+          </div>
+        ))}</div>}
+      </div>}
+
+      {tab==="cars"&&<>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+        <div style={{flex:1,fontSize:12,color:t.textDim}}>{cars.length} سيارة — {cars.filter(c=>c.status==="in-use").length} مستخدمة</div>
         <div style={{display:"flex",gap:6}}>
           {!readOnly&&<Btn onClick={()=>setManageSavedModal(true)} color="#8B5CF6" small>📇 المستخدمون</Btn>}
           {!readOnly&&<Btn onClick={()=>setAddModal(true)} color="#06B6D4" small>+ سيارة</Btn>}
@@ -373,6 +450,19 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers:rawSavedU
           </div>
         );})}
       </div>
+      </>}
+
+      {/* Close request confirmation modal */}
+      <Modal open={!!closeConfirm} onClose={()=>setCloseConfirm(null)} title="✅ إغلاق الطلب" t={t}>
+        {closeConfirm&&<div>
+          <div style={{fontSize:14,marginBottom:8}}>سيتم إغلاق طلب <strong>{closeConfirm.name}</strong> ونقله إلى السجل.</div>
+          <div style={{fontSize:12,color:t.textDim,marginBottom:16,padding:"8px 12px",background:"rgba(255,255,255,0.03)",borderRadius:8}}>{vehicleLabel(closeConfirm.vehicleType)} • {closeConfirm.destination}</div>
+          <div style={{display:"flex",gap:8}}>
+            <Btn onClick={()=>setCloseConfirm(null)} color="transparent" style={{flex:1,border:`1px solid ${t.border}`,color:t.textMuted}}>إلغاء</Btn>
+            <Btn onClick={async()=>{await closeCarRequest(closeConfirm.id,closeConfirm);setCloseConfirm(null);}} color="#22C55E" style={{flex:1}}>✅ تأكيد الإغلاق</Btn>
+          </div>
+        </div>}
+      </Modal>
 
       {/* Add car modal */}
       <Modal open={addModal} onClose={()=>setAddModal(false)} title="+ إضافة سيارة" t={t}>
@@ -460,7 +550,52 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers:rawSavedU
 };
 
 /* ═══════ ADMIN DASHBOARD ═══════ */
-const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,openBoarding,onEnableOpen,onDisableOpen,onGoTo,t,readOnly})=>(
+const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,boardingMode,onSetMode,onGoTo,t,readOnly})=>{
+  const isOpen=boardingMode==="open";
+  const isOutbound=boardingMode==="roundtrip-outbound";
+  const isReturn=boardingMode==="roundtrip-return";
+  const isNormal=boardingMode==="normal";
+  const[notReturnedAllModal,setNotReturnedAllModal]=useState(false);
+  const[copied,setCopied]=useState(null);
+
+  // Build per-bus not-returned summary for return mode
+  const perBusNotReturned=isReturn?busesData.map(b=>{
+    const bc=busConfigs.find(c=>c.id===b.id);
+    const list=b.students.filter(s=>s.wentOut&&!s.checkedIn);
+    const families={};
+    list.forEach(s=>{const fn=s.familyNum||"_individuals";if(!families[fn])families[fn]=[];families[fn].push(s);});
+    return{bus:b,config:bc,list,families};
+  }).filter(x=>x.list.length>0):[];
+
+  const totalNotReturned=perBusNotReturned.reduce((sum,x)=>sum+x.list.length,0);
+
+  const buildBusText=(entry)=>{
+    let text=`━━━━━━━━━━━━━━\n🚌 ${entry.config.name} — لم يعد بعد (${entry.list.length})\n━━━━━━━━━━━━━━\n`;
+    Object.entries(entry.families).forEach(([fn,members])=>{
+      if(fn==="_individuals"){
+        members.forEach(s=>{text+=`• ${s.name}${s.room?` (غ${s.room})`:""}${s.phone?` 📱${s.phone}`:""}\n`;});
+      } else {
+        const head=members.find(m=>m.isHead);
+        text+=`\n👨‍👩‍👧‍👦 عائلة ${fn}${head?` (رب: ${head.name})`:""} — ${members.length} فرد:\n`;
+        members.forEach(s=>{text+=`  - ${s.isHead?"👑 ":""}${s.name}${s.room?` (غ${s.room})`:""}\n`;});
+      }
+    });
+    return text;
+  };
+
+  const copyTextToClipboard=(text,key)=>{
+    const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();
+    try{document.execCommand("copy");setCopied(key);setTimeout(()=>setCopied(null),2500);}catch(e){}
+    document.body.removeChild(ta);
+  };
+
+  const copyAllNotReturned=()=>{
+    let text=`⚠️ تقرير من لم يعد بعد — جميع الباصات\nالإجمالي: ${totalNotReturned} حاج\n\n`;
+    perBusNotReturned.forEach(entry=>{text+=buildBusText(entry)+"\n";});
+    copyTextToClipboard(text,"all");
+  };
+
+  return(
   <div>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
       <div><div style={{fontSize:20,fontWeight:800}}>لوحة التحكم</div></div>
@@ -471,64 +606,141 @@ const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,openBoarding,on
       </div>
     </div>
     {!readOnly&&<div style={{background:t.bgCard,borderRadius:14,border:`1px solid ${t.border}`,padding:16,marginBottom:16}}>
-      <div style={{fontSize:12,fontWeight:700,color:t.textDim,marginBottom:12}}>وضع الركوب</div>
-      <div style={{display:"flex",gap:10}}>
-        <button onClick={onDisableOpen} style={{flex:1,padding:"14px 12px",borderRadius:10,border:"2px solid",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:!openBoarding?"rgba(34,197,94,0.12)":"transparent",borderColor:!openBoarding?"rgba(34,197,94,0.55)":"rgba(255,255,255,0.08)",color:!openBoarding?"#22C55E":t.textDim}}><div style={{fontSize:24,marginBottom:4}}>🔒</div>العادي</button>
-        <button onClick={onEnableOpen} style={{flex:1,padding:"14px 12px",borderRadius:10,border:"2px solid",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:openBoarding?"rgba(251,191,36,0.12)":"transparent",borderColor:openBoarding?"rgba(251,191,36,0.55)":"rgba(255,255,255,0.08)",color:openBoarding?"#FBBF24":t.textDim}}><div style={{fontSize:24,marginBottom:4}}>🔓</div>مفتوح</button>
+      <div style={{fontSize:12,fontWeight:700,color:t.textDim,marginBottom:12}}>وضع التفويج</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+        <button onClick={()=>onSetMode("normal")} style={{padding:"14px 12px",borderRadius:10,border:"2px solid",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:isNormal?"rgba(34,197,94,0.12)":"transparent",borderColor:isNormal?"rgba(34,197,94,0.55)":"rgba(255,255,255,0.08)",color:isNormal?"#22C55E":t.textDim}}><div style={{fontSize:24,marginBottom:4}}>🔒</div>عادي</button>
+        <button onClick={()=>onSetMode("open")} style={{padding:"14px 12px",borderRadius:10,border:"2px solid",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:isOpen?"rgba(251,191,36,0.12)":"transparent",borderColor:isOpen?"rgba(251,191,36,0.55)":"rgba(255,255,255,0.08)",color:isOpen?"#FBBF24":t.textDim}}><div style={{fontSize:24,marginBottom:4}}>🔓</div>مفتوح</button>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <button onClick={()=>onSetMode("roundtrip-outbound")} style={{padding:"14px 12px",borderRadius:10,border:"2px solid",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:isOutbound?"rgba(59,130,246,0.12)":"transparent",borderColor:isOutbound?"rgba(59,130,246,0.55)":"rgba(255,255,255,0.08)",color:isOutbound?"#60A5FA":t.textDim}}><div style={{fontSize:24,marginBottom:4}}>🕋</div>ذهاب (للحرم)</button>
+        <button onClick={()=>onSetMode("roundtrip-return")} disabled={!isOutbound&&!isReturn} style={{padding:"14px 12px",borderRadius:10,border:"2px solid",cursor:!isOutbound&&!isReturn?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:isReturn?"rgba(168,85,247,0.12)":"transparent",borderColor:isReturn?"rgba(168,85,247,0.55)":"rgba(255,255,255,0.08)",color:isReturn?"#A78BFA":t.textDim,opacity:!isOutbound&&!isReturn?0.4:1}}><div style={{fontSize:24,marginBottom:4}}>↩️</div>عودة (تسجيل الراجعين)</button>
+      </div>
+      {isOutbound&&<div style={{marginTop:10,padding:"8px 12px",borderRadius:8,background:"rgba(59,130,246,0.08)",border:"1px solid rgba(59,130,246,0.2)",fontSize:11,color:"#60A5FA"}}>📌 مرحلة الذهاب: سجّل الحجاج الذاهبين. عند الوصول للحرم، اضغط "عودة" لتسجيل الراجعين.</div>}
+      {isReturn&&<div style={{marginTop:10,padding:"8px 12px",borderRadius:8,background:"rgba(168,85,247,0.08)",border:"1px solid rgba(168,85,247,0.2)",fontSize:11,color:"#A78BFA"}}>📌 مرحلة العودة: يظهر فقط من ذهبوا. اضغط "عادي" لإنهاء التفويج.</div>}
+    </div>}
+    {isReturn&&totalNotReturned>0&&<div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:12,padding:14,marginBottom:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:14,fontWeight:800,color:"#EF4444"}}>⚠️ {totalNotReturned} حاج لم يعد بعد</div>
+          <div style={{fontSize:11,color:t.textMuted,marginTop:2}}>موزّعون على {perBusNotReturned.length} باص</div>
+        </div>
+        <Btn onClick={()=>setNotReturnedAllModal(true)} color="#EF4444" small>📋 عرض ونسخ</Btn>
       </div>
     </div>}
     <SimpleMap locations={busesData.filter(b=>b.location).map(b=>({id:b.id,lat:b.location.lat,lng:b.location.lng,color:busConfigs.find(c=>c.id===b.id)?.color,status:b.status,label:busConfigs.find(c=>c.id===b.id)?.name}))} height={300}/>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:16}}>
       {busesData.map(bus=>{
         const bc=busConfigs.find(c=>c.id===bus.id);
-        // In open boarding: show checked-in count out of capacity
-        // In normal mode: show checked-in out of total assigned
         const chk=bus.students.filter(s=>s.checkedIn).length;
-        const totalS=openBoarding?BUS_CAPACITY:bus.students.length;
-        const pct=openBoarding?Math.round((chk/BUS_CAPACITY)*100):totalS>0?Math.round((chk/totalS)*100):0;
+        let totalS,pct,label;
+        if(isOpen){
+          totalS=BUS_CAPACITY;pct=Math.round((chk/BUS_CAPACITY)*100);label="الركاب الحاليون";
+        } else if(isReturn){
+          // In return mode: total = those who went out, checked = those returned
+          const wentOut=bus.students.filter(s=>s.wentOut).length;
+          totalS=wentOut;pct=wentOut>0?Math.round((chk/wentOut)*100):0;label="عاد من الذهاب";
+        } else {
+          totalS=bus.students.length;pct=totalS>0?Math.round((chk/totalS)*100):0;label=isOutbound?"حاضر للذهاب":"الحضور";
+        }
+        const notReturned=isReturn?bus.students.filter(s=>s.wentOut&&!s.checkedIn).length:0;
         return(
         <div key={bus.id} onClick={()=>onSelectBus(bus.id)} style={{background:t.bgCard,borderRadius:16,border:`1px solid ${t.border}`,padding:20,cursor:"pointer",position:"relative",overflow:"hidden"}}
           onMouseEnter={e=>{e.currentTarget.style.background=t.bgCardHover;}} onMouseLeave={e=>{e.currentTarget.style.background=t.bgCard;}}>
           <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:bc.color}}/>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}><div><div style={{fontSize:17,fontWeight:700}}>{bc.name}</div><div style={{fontSize:11,color:t.textDim}}>المشرف: {bc.supervisor}</div></div><StatusPill status={bus.status}/></div>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><span style={{fontSize:13,color:t.textMuted}}>{openBoarding?"الركاب الحاليون":"الحضور"}</span><span style={{fontSize:13,fontWeight:700}}>{chk}/{totalS}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><span style={{fontSize:13,color:t.textMuted}}>{label}</span><span style={{fontSize:13,fontWeight:700}}>{chk}/{totalS}</span></div>
           <div style={{height:6,background:"rgba(128,128,128,0.15)",borderRadius:3,overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",borderRadius:3,background:bc.color}}/></div>
+          {isReturn&&notReturned>0&&<div style={{fontSize:11,color:"#EF4444",marginTop:8,fontWeight:700}}>⚠️ {notReturned} لم يعد بعد</div>}
         </div>);})}
     </div>
+
+    {/* All buses "not returned" modal — separate copy per bus + one big copy */}
+    <Modal open={notReturnedAllModal} onClose={()=>setNotReturnedAllModal(false)} title="⚠️ تقرير من لم يعد بعد" width={600} t={t}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:8,flexWrap:"wrap"}}>
+        <div style={{fontSize:13,color:t.textMuted}}>إجمالي: <strong style={{color:"#EF4444"}}>{totalNotReturned}</strong> حاج في {perBusNotReturned.length} باص</div>
+        <Btn onClick={copyAllNotReturned} disabled={totalNotReturned===0} color="#EF4444" small>{copied==="all"?"✅ تم نسخ الكل":"📋 نسخ تقرير كل الباصات"}</Btn>
+      </div>
+      {perBusNotReturned.length===0?<div style={{padding:20,textAlign:"center",color:"#22C55E",fontSize:13}}>✅ الجميع عاد</div>:
+      <div style={{display:"grid",gap:12,maxHeight:500,overflowY:"auto"}}>{perBusNotReturned.map(entry=>(
+        <div key={entry.bus.id} style={{background:t.bgCard,borderRadius:12,border:`2px solid ${entry.config.color}40`,padding:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,gap:8,flexWrap:"wrap"}}>
+            <div>
+              <div style={{fontSize:14,fontWeight:800,color:entry.config.color}}>🚌 {entry.config.name}</div>
+              <div style={{fontSize:11,color:t.textDim}}>المشرف: {entry.config.supervisor} • {entry.list.length} حاج لم يعد</div>
+            </div>
+            <Btn onClick={()=>copyTextToClipboard(buildBusText(entry),`bus-${entry.bus.id}`)} color={entry.config.color} small style={{fontSize:11}}>{copied===`bus-${entry.bus.id}`?"✅ تم":"📋 نسخ هذا الباص"}</Btn>
+          </div>
+          <div style={{display:"grid",gap:6}}>
+            {Object.entries(entry.families).map(([fn,members])=>{
+              const head=members.find(m=>m.isHead);
+              if(fn==="_individuals"){
+                return(<div key="indiv" style={{padding:8,borderRadius:8,background:"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.15)"}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"#EF4444",marginBottom:4}}>🧍 أفراد ({members.length})</div>
+                  {members.map(s=><div key={s.id} style={{fontSize:11,padding:"3px 6px"}}>• {s.name}{s.room?` (غ${s.room})`:""}</div>)}
+                </div>);
+              }
+              return(<div key={fn} style={{padding:8,borderRadius:8,background:"rgba(200,169,81,0.06)",border:"1px solid rgba(200,169,81,0.15)"}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#C8A951",marginBottom:4}}>👨‍👩‍👧‍👦 عائلة {fn}{head&&` (رب: ${head.name})`} — {members.length}</div>
+                {members.map(s=><div key={s.id} style={{fontSize:11,padding:"3px 6px"}}>{s.isHead?"👑 ":""}{s.name}{s.room?` (غ${s.room})`:""}</div>)}
+              </div>);
+            })}
+          </div>
+        </div>
+      ))}</div>}
+    </Modal>
   </div>
-);
+  );
+};
 
 /* ═══════ BUS LEADER VIEW ═══════ */
-const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpdate,onCrossBoard,onRemoveCrossBoarded,openBoarding,canCheckin,canManageFamilies,canChangeStatus,busAdmins,onUpdateBusAdmins,settings,t})=>{
+const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpdate,onCrossBoard,onRemoveCrossBoarded,boardingMode,canCheckin,canManageFamilies,canChangeStatus,busAdmins,onUpdateBusAdmins,settings,currentUserName,t})=>{
   const[scanAnim,setScanAnim]=useState(null);const[gpsStatus,setGpsStatus]=useState("waiting");
   const[searchQ,setSearchQ]=useState("");const[copied,setCopied]=useState(null);
   const[destModal,setDestModal]=useState(false);const[destInput,setDestInput]=useState("");
   const[familyModal,setFamilyModal]=useState(false);const[familyCheckinModal,setFamilyCheckinModal]=useState(null);
   const[crossBoardModal,setCrossBoardModal]=useState(false);const[crossBoardSearch,setCrossBoardSearch]=useState("");const[crossBoardFilterBus,setCrossBoardFilterBus]=useState("");
-  const[editPilgrimState,setEditPilgrimState]=useState(null);const[epName,setEpName]=useState("");const[epPhone,setEpPhone]=useState("");const[epRoom,setEpRoom]=useState("");
+  const[editPilgrimState,setEditPilgrimState]=useState(null);const[epName,setEpName]=useState("");const[epPhone,setEpPhone]=useState("");const[epRoom,setEpRoom]=useState("");const[epFamilyNum,setEpFamilyNum]=useState("");const[epIsHead,setEpIsHead]=useState(false);
   const[familyNumCheckin,setFamilyNumCheckin]=useState("");
   const[adminMgmt,setAdminMgmt]=useState(false);const[newAdminName,setNewAdminName]=useState("");const[newAdminPin,setNewAdminPin]=useState("");const[newAdminCheckin,setNewAdminCheckin]=useState(false);const[newAdminErr,setNewAdminErr]=useState("");
   const[wentAwayModal,setWentAwayModal]=useState(false);
   const[notBoardedModal,setNotBoardedModal]=useState(false);
+  const[notReturnedModal,setNotReturnedModal]=useState(false);
   const geoRef=useRef(null);
 
   const students=busData.students;
 
-  // In OPEN BOARDING:
-  //   - visibleStudents = only who is checked-in (boarded this bus)
-  //   - isFull = checked-in count >= 55
-  //   - total shown = checked-in count (capacity counter = X/55)
-  // In NORMAL mode:
-  //   - visibleStudents = all assigned students
-  //   - isFull = total assigned >= 55
-  //   - total shown = assigned count
+  // boardingMode: "normal" | "open" | "roundtrip-outbound" | "roundtrip-return"
+  const isOpen=boardingMode==="open";
+  const isOutbound=boardingMode==="roundtrip-outbound";
+  const isReturn=boardingMode==="roundtrip-return";
+
+  // Visibility and counters logic per mode:
+  //   open: show only checked-in (boarded); capacity X/55
+  //   outbound: show all assigned; counter = checkedIn/assigned (these will become "wentOut" when mode switches to return)
+  //   return: show only those with wentOut=true (and didn't go = wentOut=false visible too as struck-out);
+  //           counter = returned (checkedIn)/wentOut
+  //   normal: show all assigned; counter = checkedIn/assigned
   const checkedInStudents=students.filter(s=>s.checkedIn);
   const boardedCount=checkedInStudents.length;
-  const isFull=openBoarding ? boardedCount>=BUS_CAPACITY : students.length>=BUS_CAPACITY;
 
-  const visibleStudents=openBoarding ? checkedInStudents : students;
-  const checked=boardedCount;
-  const total=openBoarding ? BUS_CAPACITY : students.length;
+  let visibleStudents,checked,total,isFull;
+  if(isOpen){
+    visibleStudents=checkedInStudents;
+    checked=boardedCount;total=BUS_CAPACITY;
+    isFull=boardedCount>=BUS_CAPACITY;
+  } else if(isReturn){
+    // Show those who went out + those who didn't go (struck out)
+    visibleStudents=students;
+    const wentOutCount=students.filter(s=>s.wentOut).length;
+    checked=students.filter(s=>s.wentOut&&s.checkedIn).length;
+    total=wentOutCount;
+    isFull=false;
+  } else {
+    // normal or outbound
+    visibleStudents=students;
+    checked=boardedCount;total=students.length;
+    isFull=students.length>=BUS_CAPACITY;
+  }
   const familyNums=[...new Set(students.filter(s=>s.familyNum).map(s=>s.familyNum))];
 
   useEffect(()=>{if(!navigator.geolocation){setGpsStatus("simulated");return;}navigator.geolocation.getCurrentPosition(p=>{setGpsStatus("active");onUpdate({...busData,location:{lat:p.coords.latitude,lng:p.coords.longitude}});},()=>setGpsStatus("simulated"),{enableHighAccuracy:true,timeout:8000});geoRef.current=navigator.geolocation.watchPosition(p=>{setGpsStatus("active");onUpdate(prev=>({...(prev||busData),location:{lat:p.coords.latitude,lng:p.coords.longitude}}));},()=>setGpsStatus("simulated"),{enableHighAccuracy:true,maximumAge:5000,timeout:15000});return()=>{if(geoRef.current!==null)navigator.geolocation.clearWatch(geoRef.current);};},[]);
@@ -543,48 +755,101 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
       if(onRemoveCrossBoarded){onRemoveCrossBoarded(pid,busData.id);}
       return;
     }
+    // In return mode: only allow toggling those who went out
+    if(isReturn&&!st.wentOut){return;}
     const now=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
     if(!st.checkedIn){setScanAnim(pid);setTimeout(()=>setScanAnim(null),800);}
-    onUpdate({...busData,students:students.map(s=>s.id===pid?{...s,checkedIn:!s.checkedIn,time:s.checkedIn?null:now,method:s.checkedIn?null:"manual"}:s)});
+    onUpdate({...busData,students:students.map(s=>s.id===pid?{...s,checkedIn:!s.checkedIn,time:s.checkedIn?null:now,method:s.checkedIn?null:"manual",addedBy:s.checkedIn?"":(currentUserName||"")}:s)});
   };
-  const checkinFamily=(headOrFamNum,allMembers)=>{if(!canCheckin)return;const now=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});let memberIds;if(typeof headOrFamNum==="string"){memberIds=students.filter(s=>s.familyNum===headOrFamNum).map(s=>s.id);}else{memberIds=students.filter(s=>s.familyNum&&s.familyNum===headOrFamNum.familyNum).map(s=>s.id);}if(allMembers){onUpdate({...busData,students:students.map(s=>memberIds.includes(s.id)?{...s,checkedIn:true,time:now,method:"manual"}:s)});}else if(typeof headOrFamNum!=="string"){togglePilgrim(headOrFamNum.id);}setFamilyCheckinModal(null);setFamilyNumCheckin("");};
+  const checkinFamily=(headOrFamNum,allMembers)=>{
+    if(!canCheckin)return;
+    const now=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+    let memberIds;
+    if(typeof headOrFamNum==="string"){
+      memberIds=students.filter(s=>s.familyNum===headOrFamNum).map(s=>s.id);
+    } else {
+      memberIds=students.filter(s=>s.familyNum&&s.familyNum===headOrFamNum.familyNum).map(s=>s.id);
+    }
+    // In return mode, filter to only those who went out
+    if(isReturn){
+      memberIds=memberIds.filter(mid=>{const m=students.find(s=>s.id===mid);return m&&m.wentOut;});
+    }
+    if(allMembers){
+      onUpdate({...busData,students:students.map(s=>memberIds.includes(s.id)?{...s,checkedIn:true,time:now,method:"manual",addedBy:currentUserName||""}:s)});
+    } else if(typeof headOrFamNum!=="string"){
+      togglePilgrim(headOrFamNum.id);
+    }
+    setFamilyCheckinModal(null);setFamilyNumCheckin("");
+  };
   const setStatus=(s)=>{if(!canChangeStatus)return;if(s==="commuting"){setDestModal(true);return;}onUpdate({...busData,status:s,destination:""});};
   const confirmDest=()=>{if(!destInput.trim())return;onUpdate({...busData,status:"commuting",destination:destInput.trim()});setDestModal(false);setDestInput("");};
-  const copyList=(type)=>{const list=visibleStudents.filter(s=>type==="present"?s.checkedIn:!s.checkedIn);const text=(type==="present"?`✅ الحاضرون في ${busConfig.name} (${list.length})`:`❌ الغائبون عن ${busConfig.name} (${list.length})`)+"\n"+list.map((s,i)=>`${i+1}. ${s.name}${s.room?` (غ${s.room})`:""}`).join("\n");const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();try{document.execCommand("copy");setCopied(type);setTimeout(()=>setCopied(null),2500);}catch(e){}document.body.removeChild(ta);};
-  const savePilgrimEdit=()=>{if(!editPilgrimState)return;onUpdate({...busData,students:students.map(s=>s.id===editPilgrimState.id?{...s,name:epName||s.name,phone:epPhone,room:epRoom}:s)});setEditPilgrimState(null);};
+  const copyList=(type)=>{const list=visibleStudents.filter(s=>type==="present"?s.checkedIn:!s.checkedIn);const text=(type==="present"?`✅ الحاضرون في ${busConfig.name} (${list.length})`:`❌ الغائبون عن ${busConfig.name} (${list.length})`)+"\n"+list.map((s,i)=>`${i+1}. ${s.name}${s.familyNum?` [عائلة ${s.familyNum}]`:""}${s.room?` (غ${s.room})`:""}`).join("\n");const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();try{document.execCommand("copy");setCopied(type);setTimeout(()=>setCopied(null),2500);}catch(e){}document.body.removeChild(ta);};
+  const savePilgrimEdit=()=>{
+    if(!editPilgrimState)return;
+    // If isHead is set, we need to ensure they belong to the family
+    const newFamily=epFamilyNum.trim();
+    onUpdate({...busData,students:students.map(s=>{
+      if(s.id===editPilgrimState.id){
+        return{...s,name:epName||s.name,phone:epPhone,room:epRoom,familyNum:newFamily,isHead:newFamily?epIsHead:false};
+      }
+      // If this person became head of a family, unset isHead on the previous head of that family
+      if(epIsHead&&newFamily&&s.familyNum===newFamily&&s.id!==editPilgrimState.id&&s.isHead){
+        return{...s,isHead:false};
+      }
+      return s;
+    })});
+    setEditPilgrimState(null);
+  };
   const createFamily=(ids,headId,familyNum)=>{onUpdate({...busData,students:students.map(s=>ids.includes(s.id)?{...s,familyNum,isHead:s.id===headId}:s)});};
   const removeFamily=(famNum)=>{onUpdate({...busData,students:students.map(s=>s.familyNum===famNum?{...s,familyNum:"",isHead:false}:s)});};
-  const resetCheckins=()=>{if(!canCheckin)return;onUpdate({...busData,students:students.map(s=>({...s,checkedIn:false,time:null,method:null})),status:"stopped",destination:""});};
+  const resetCheckins=()=>{if(!canCheckin)return;onUpdate({...busData,students:students.map(s=>({...s,checkedIn:false,time:null,method:null,addedBy:""})),status:"stopped",destination:""});};
 
-  const sorted=[...visibleStudents].sort((a,b)=>{if(a.type==="admin"&&b.type!=="admin")return 1;if(b.type==="admin"&&a.type!=="admin")return -1;if(a.isHead&&!b.isHead)return -1;if(!a.isHead&&b.isHead)return 1;return 0;});
+  const sorted=[...visibleStudents].sort((a,b)=>{
+    // In return mode: "didn't go" go to bottom
+    if(isReturn){
+      if(a.wentOut&&!b.wentOut)return -1;
+      if(!a.wentOut&&b.wentOut)return 1;
+    }
+    if(a.type==="admin"&&b.type!=="admin")return 1;
+    if(b.type==="admin"&&a.type!=="admin")return -1;
+    if(a.isHead&&!b.isHead)return -1;
+    if(!a.isHead&&b.isHead)return 1;
+    return 0;
+  });
   const filtered=searchQ.trim()?sorted.filter(s=>(s.name||"").toLowerCase().includes(searchQ.trim().toLowerCase())):sorted;
   const filteredHome=filtered.filter(s=>s.homeBusId===busData.id);
   const filteredCross=filtered.filter(s=>s.homeBusId!==busData.id);
 
-  // AVAILABLE LIST for cross-boarding: ALL pilgrims from ALL buses (including home bus in open mode)
-  // Exclude: anyone already cross-boarded somewhere, anyone already in current bus
-  const allAvailable=openBoarding&&allBusesData
+  // AVAILABLE LIST for cross-boarding (only in open mode): ALL pilgrims from ALL buses
+  const allAvailable=isOpen&&allBusesData
     ? allBusesData.flatMap(b=>b.students)
         .filter(s=>{
-          // Exclude if already in current bus (checked in here or originally here AND not boarded elsewhere)
           if(students.find(x=>x.id===s.id))return false;
-          // Exclude if boarded in another bus (someone else added them)
           if(s.boardedBus)return false;
-          // Exclude admins (only show pilgrims)
           if(s.type==="admin")return false;
           return true;
         })
     : [];
 
-  // For the "went away" button: my home pilgrims who boarded elsewhere
+  // Who from my bus went to other buses (open mode only)
   const homeWentAway=allBusesData
     ? allBusesData.flatMap(b=>b.students).filter(s=>s.homeBusId===busData.id&&s.boardedBus)
     : [];
 
-  // For the "not yet boarded" button: my home pilgrims who haven't boarded anywhere
+  // Who from my bus hasn't boarded any bus (open mode only)
   const homeNotBoarded=allBusesData
     ? allBusesData.find(b=>b.id===busData.id)?.students.filter(s=>s.homeBusId===busData.id&&!s.checkedIn&&!s.boardedBus&&s.type!=="admin")||[]
     : [];
+
+  // Who went out but hasn't returned yet (return mode)
+  const notReturned=students.filter(s=>s.wentOut&&!s.checkedIn);
+  // Group by family for the "didn't return" list
+  const notReturnedFamilies={};
+  notReturned.forEach(s=>{
+    const fn=s.familyNum||"_individuals";
+    if(!notReturnedFamilies[fn])notReturnedFamilies[fn]=[];
+    notReturnedFamilies[fn].push(s);
+  });
 
   const copyWentAwayList=()=>{
     const text=`🚌 حجاج ${busConfig.name} ركبوا في باصات أخرى (${homeWentAway.length})\n`+
@@ -593,34 +858,70 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
   };
   const copyNotBoardedList=()=>{
     const text=`⏳ حجاج ${busConfig.name} لم يركبوا أي باص بعد (${homeNotBoarded.length})\n`+
-      homeNotBoarded.map((s,i)=>`${i+1}. ${s.name}${s.room?` (غ${s.room})`:""}`).join("\n");
+      homeNotBoarded.map((s,i)=>`${i+1}. ${s.name}${s.familyNum?` [عائلة ${s.familyNum}]`:""}${s.room?` (غ${s.room})`:""}`).join("\n");
     const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();try{document.execCommand("copy");setCopied("notBoarded");setTimeout(()=>setCopied(null),2500);}catch(e){}document.body.removeChild(ta);
+  };
+  const copyNotReturnedList=()=>{
+    let text=`⚠️ ${busConfig.name} — لم يعد بعد (${notReturned.length})\n`;
+    Object.entries(notReturnedFamilies).forEach(([fn,members])=>{
+      if(fn==="_individuals"){
+        members.forEach((s,i)=>{text+=`• ${s.name}${s.room?` (غ${s.room})`:""}\n`;});
+      } else {
+        const head=members.find(m=>m.isHead);
+        text+=`\n👨‍👩‍👧‍👦 عائلة ${fn}${head?` (رب: ${head.name})`:""} — ${members.length} فرد:\n`;
+        members.forEach(s=>{text+=`  - ${s.isHead?"👑 ":""}${s.name}${s.room?` (غ${s.room})`:""}\n`;});
+      }
+    });
+    const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();try{document.execCommand("copy");setCopied("notReturned");setTimeout(()=>setCopied(null),2500);}catch(e){}document.body.removeChild(ta);
+  };
+  // Copy a single family's "not returned" status
+  const copySingleFamily=(fn,members)=>{
+    const head=members.find(m=>m.isHead);
+    let text;
+    if(fn==="_individuals"){
+      text=`⚠️ ${busConfig.name} — حجاج لم يعودوا (${members.length}):\n`+
+        members.map(s=>`• ${s.name}${s.room?` (غ${s.room})`:""}`).join("\n");
+    } else {
+      text=`⚠️ ${busConfig.name} — عائلة ${fn}${head?` (رب: ${head.name})`:""} لم تعد بعد (${members.length} فرد):\n`+
+        members.map(s=>`• ${s.isHead?"👑 ":""}${s.name}${s.room?` (غ${s.room})`:""}`).join("\n");
+    }
+    const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();try{document.execCommand("copy");setCopied(`fam-${fn}`);setTimeout(()=>setCopied(null),2500);}catch(e){}document.body.removeChild(ta);
   };
 
   const renderCard=(s)=>{
     const isHead=s.isHead;const isAdm=s.type==="admin";const isCross=s.homeBusId!==busData.id;
     const wentAway=s.boardedBus&&!isCross;const homeBc=isCross?allBusConfigs.find(b=>b.id===s.homeBusId):null;
     const boardedBc=wentAway?allBusConfigs.find(b=>b.id===s.boardedBus):null;
+    // In return mode: this person didn't go on the outbound trip
+    const didntGo=isReturn&&!s.wentOut&&!isAdm;
+    // In return mode: this person went out but didn't return yet
+    const didntReturn=isReturn&&s.wentOut&&!s.checkedIn;
     let bg,bc2,bw;
-    if(wentAway){bg="rgba(200,169,81,0.15)";bc2="rgba(200,169,81,0.4)";bw="1px";}
+    if(didntGo){bg="rgba(100,116,139,0.08)";bc2="rgba(100,116,139,0.3)";bw="1px";}
+    else if(didntReturn){bg="rgba(239,68,68,0.08)";bc2="rgba(239,68,68,0.3)";bw="1px";}
+    else if(wentAway){bg="rgba(200,169,81,0.15)";bc2="rgba(200,169,81,0.4)";bw="1px";}
     else if(isCross){bg="rgba(251,191,36,0.08)";bc2="rgba(251,191,36,0.4)";bw="1px";}
     else if(isAdm){bg=s.checkedIn?"rgba(139,92,246,0.15)":"rgba(139,92,246,0.05)";bc2="rgba(139,92,246,0.3)";bw="1px";}
     else if(isHead){bg=s.checkedIn?`${busConfig.color}18`:"rgba(200,169,81,0.06)";bc2="rgba(200,169,81,0.6)";bw="2px";}
     else{bg=s.checkedIn?`${busConfig.color}18`:t.bgCard;bc2=s.checkedIn?busConfig.color+"40":t.border;bw="1px";}
-    return(<div key={s.id} onClick={()=>{if(wentAway||!canCheckin)return;if(isHead&&!isCross){setFamilyCheckinModal(s);return;}togglePilgrim(s.id);}} style={{padding:"10px 12px",borderRadius:10,cursor:wentAway||!canCheckin?"default":"pointer",userSelect:"none",background:bg,border:`${bw} solid ${bc2}`,transform:scanAnim===s.id?"scale(1.06)":"scale(1)",opacity:wentAway?0.75:1}}>
+    const clickable=!wentAway&&canCheckin&&!didntGo;
+    return(<div key={s.id} onClick={()=>{if(!clickable)return;if(isHead&&!isCross){setFamilyCheckinModal(s);return;}togglePilgrim(s.id);}} style={{padding:"10px 12px",borderRadius:10,cursor:clickable?"pointer":"default",userSelect:"none",background:bg,border:`${bw} solid ${bc2}`,transform:scanAnim===s.id?"scale(1.06)":"scale(1)",opacity:wentAway||didntGo?0.6:1}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <span style={{fontSize:13,fontWeight:600,color:s.checkedIn||wentAway?t.text:t.textMuted}}>{isAdm?"👤 ":isHead&&!isCross?"👑 ":isCross?"🔄 ":s.familyNum?"👥 ":""}{s.name}</span>
+        <span style={{fontSize:13,fontWeight:600,color:s.checkedIn||wentAway?t.text:t.textMuted,textDecoration:didntGo?"line-through":"none"}}>{isAdm?"👤 ":isHead&&!isCross?"👑 ":isCross?"🔄 ":s.familyNum?"👥 ":""}{s.name}</span>
         <div style={{display:"flex",alignItems:"center",gap:4}}>
-          {canCheckin&&!wentAway&&!isAdm&&<button onClick={e=>{e.stopPropagation();setEditPilgrimState(s);setEpName(s.name);setEpPhone(s.phone||"");setEpRoom(s.room||"");}} style={{background:"rgba(59,130,246,0.15)",border:"none",color:"#60A5FA",borderRadius:4,padding:"2px 6px",fontSize:9,cursor:"pointer",fontFamily:"inherit"}}>✏️</button>}
-          <span style={{fontSize:16}}>{wentAway?"🚌":s.checkedIn?"✅":"⬜"}</span>
+          {canCheckin&&!wentAway&&!isAdm&&<button onClick={e=>{e.stopPropagation();setEditPilgrimState(s);setEpName(s.name);setEpPhone(s.phone||"");setEpRoom(s.room||"");setEpFamilyNum(s.familyNum||"");setEpIsHead(!!s.isHead);}} style={{background:"rgba(59,130,246,0.15)",border:"none",color:"#60A5FA",borderRadius:4,padding:"2px 6px",fontSize:9,cursor:"pointer",fontFamily:"inherit"}}>✏️</button>}
+          <span style={{fontSize:16}}>{didntGo?"🚫":didntReturn?"⏳":wentAway?"🚌":s.checkedIn?"✅":"⬜"}</span>
         </div>
       </div>
       {isAdm&&<div style={{fontSize:9,color:"#A78BFA",marginTop:2,fontWeight:700}}>إداري</div>}
+      {didntGo&&<div style={{fontSize:10,color:"#64748B",marginTop:2,fontWeight:700}}>🚫 لم يذهب</div>}
+      {didntReturn&&<div style={{fontSize:10,color:"#EF4444",marginTop:2,fontWeight:700}}>⏳ لم يعد بعد</div>}
       {isCross&&homeBc&&<div style={{fontSize:10,color:"#FBBF24",marginTop:2,fontWeight:600}}>📍 من {homeBc.name}</div>}
       {wentAway&&boardedBc&&<div style={{fontSize:10,color:"#C8A951",marginTop:2,fontWeight:700}}>🚌 ركب {boardedBc.name}</div>}
-      {isHead&&!isCross&&s.familyNum&&<div style={{fontSize:10,color:"#C8A951",marginTop:2}}>👑 عائلة {s.familyNum}</div>}
+      {s.familyNum&&!isCross&&<div style={{fontSize:10,color:"#C8A951",marginTop:2,fontWeight:600}}>{isHead?"👑 ":"👥 "}عائلة {s.familyNum}</div>}
       {s.room&&<div style={{fontSize:9,color:t.textDim,marginTop:1}}>غرفة {s.room}</div>}
-      {s.checkedIn&&s.time&&!wentAway&&<div style={{fontSize:10,color:t.textDim,marginTop:3}}>{s.time}</div>}
+      {s.checkedIn&&s.time&&!wentAway&&<div style={{fontSize:10,color:t.textDim,marginTop:3}}>⏰ {s.time}</div>}
+      {s.checkedIn&&s.addedBy&&!wentAway&&<div style={{fontSize:9,color:"#60A5FA",marginTop:1,fontWeight:600}}>👤 أدخله: {s.addedBy}</div>}
     </div>);
   };
 
@@ -637,15 +938,26 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,padding:"8px 14px",borderRadius:10,background:gpsStatus==="active"?"rgba(34,197,94,0.08)":"rgba(251,191,36,0.08)"}}><span style={{width:8,height:8,borderRadius:"50%",background:gpsStatus==="active"?"#22C55E":"#FBBF24"}}/><span style={{fontSize:12,fontWeight:600,color:gpsStatus==="active"?"#22C55E":"#FBBF24"}}>{gpsStatus==="active"?"📱 GPS":"📍 محاكاة"}</span></div>
-      {openBoarding&&canCheckin&&<div style={{marginBottom:12,padding:"12px 14px",borderRadius:10,background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.3)"}}>
+      {isOpen&&canCheckin&&<div style={{marginBottom:12,padding:"12px 14px",borderRadius:10,background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.3)"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:10,flexWrap:"wrap"}}>
-          <div style={{fontSize:12,color:"#FBBF24",fontWeight:700}}>🔓 وضع الركوب المفتوح</div>
+          <div style={{fontSize:12,color:"#FBBF24",fontWeight:700}}>🔓 وضع التفويج المفتوح</div>
           <Btn onClick={()=>{setCrossBoardModal(true);setCrossBoardSearch("");setCrossBoardFilterBus("");}} color="#FBBF24" small disabled={isFull} style={{color:"#0B1120"}}>{isFull?"ممتلئ":"+ إضافة راكب"}</Btn>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
           <Btn onClick={()=>setWentAwayModal(true)} color="rgba(200,169,81,0.2)" small style={{color:"#C8A951",border:"1px solid rgba(200,169,81,0.3)",fontSize:11}}>🚌 ركبوا باصات أخرى ({homeWentAway.length})</Btn>
           <Btn onClick={()=>setNotBoardedModal(true)} color="rgba(239,68,68,0.15)" small style={{color:"#EF4444",border:"1px solid rgba(239,68,68,0.3)",fontSize:11}}>⏳ لم يركبوا بعد ({homeNotBoarded.length})</Btn>
         </div>
+      </div>}
+      {isOutbound&&canCheckin&&<div style={{marginBottom:12,padding:"12px 14px",borderRadius:10,background:"rgba(59,130,246,0.1)",border:"1px solid rgba(59,130,246,0.3)"}}>
+        <div style={{fontSize:12,color:"#60A5FA",fontWeight:700,marginBottom:4}}>🕋 مرحلة الذهاب</div>
+        <div style={{fontSize:11,color:t.textMuted}}>سجّل الحجاج الذاهبين. سيتم حفظهم لمرحلة العودة.</div>
+      </div>}
+      {isReturn&&canCheckin&&<div style={{marginBottom:12,padding:"12px 14px",borderRadius:10,background:"rgba(168,85,247,0.1)",border:"1px solid rgba(168,85,247,0.3)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+          <div style={{fontSize:12,color:"#A78BFA",fontWeight:700}}>↩️ مرحلة العودة</div>
+        </div>
+        <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>سجّل من عاد. من لم يذهب يظهر مشطوباً (لا يمكن تسجيله).</div>
+        <Btn onClick={()=>setNotReturnedModal(true)} color="rgba(239,68,68,0.2)" small style={{color:"#EF4444",border:"1px solid rgba(239,68,68,0.3)",fontSize:11,width:"100%"}}>⚠️ لم يعد بعد ({notReturned.length})</Btn>
       </div>}
       {canChangeStatus&&<div style={{background:t.bgCard,borderRadius:14,border:`1px solid ${t.border}`,padding:16,marginBottom:16}}>
         <div style={{fontSize:12,fontWeight:700,color:t.textDim,marginBottom:12}}>الحالة {busData.status==="commuting"&&busData.destination&&<span style={{color:"#22C55E"}}>← {busData.destination}</span>}</div>
@@ -654,7 +966,7 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
         <div style={{background:`linear-gradient(135deg,${busConfig.color}18,${busConfig.color}08)`,borderRadius:14,border:`1px solid ${busConfig.color}30`,padding:20,textAlign:"center"}}>
           <div style={{fontSize:48,fontWeight:900,lineHeight:1,fontFamily:"'JetBrains Mono',monospace"}}>{checked}<span style={{fontSize:20,color:t.textDim}}>/{total}</span></div>
-          <div style={{fontSize:12,color:t.textMuted,marginTop:8}}>{checked===total&&total>0?"✅ الجميع":total===0?"لا يوجد":`${total-checked} متبقي`}</div>
+          <div style={{fontSize:12,color:t.textMuted,marginTop:8}}>{isReturn?(total===0?"لا يوجد ذاهبون":checked===total?"✅ الجميع عاد":`${total-checked} لم يعد`):isOutbound?(total===0?"لا يوجد ركاب":checked===total?"✅ الجميع حاضر":`${total-checked} متبقي`):(checked===total&&total>0?"✅ الجميع":total===0?"لا يوجد":`${total-checked} متبقي`)}</div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {canManageFamilies&&<Btn onClick={()=>setFamilyModal(true)} color="#8B5CF6" small style={{flex:1}}>👨‍👩‍👧‍👦 العائلات</Btn>}
@@ -667,7 +979,7 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
       <div style={{marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontSize:14,fontWeight:700}}>الركاب</div><div style={{display:"flex",gap:12,fontSize:12,color:t.textDim}}><span>🟢 {checked}</span><span>⚫ {total-checked}</span></div></div>
       <Input value={searchQ} onChange={setSearchQ} placeholder="🔍 ابحث..." style={{marginBottom:12}}/>
       {total===0?<div style={{padding:40,textAlign:"center",color:t.textDim,fontSize:13,background:t.bgCard,borderRadius:12,marginBottom:16}}>
-        {openBoarding?"🔓 وضع الركوب المفتوح — اضغط '+ إضافة راكب' لبدء تسجيل الركاب":"لا يوجد ركاب"}
+        {isOpen?"🔓 وضع التفويج المفتوح — اضغط '+ إضافة راكب' لبدء تسجيل الركاب":isReturn?"↩️ لا يوجد أحد في الذهاب — لا حجاج لتسجيل عودتهم":"لا يوجد ركاب"}
       </div>:(
         <><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(155px,1fr))",gap:6,marginBottom:filteredCross.length>0?12:16}}>{filteredHome.map(renderCard)}</div>
           {filteredCross.length>0&&<><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><div style={{flex:1,height:1,background:"rgba(251,191,36,0.3)"}}/><div style={{fontSize:11,color:"#FBBF24",fontWeight:700,padding:"4px 10px",background:"rgba(251,191,36,0.1)",borderRadius:20}}>🔄 ({filteredCross.length})</div><div style={{flex:1,height:1,background:"rgba(251,191,36,0.3)"}}/></div>
@@ -681,7 +993,18 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
 
       {/* MODALS */}
       <Modal open={destModal} onClose={()=>setDestModal(false)} title="🚌 الوجهة" t={t}><Input value={destInput} onChange={setDestInput} placeholder="الوجهة..." style={{marginBottom:12,fontSize:16,padding:"14px"}}/><Btn onClick={confirmDest} disabled={!destInput.trim()} color="#22C55E" style={{width:"100%",fontSize:16,padding:14}}>✅ تأكيد</Btn></Modal>
-      <Modal open={!!editPilgrimState} onClose={()=>setEditPilgrimState(null)} title="✏️ تعديل" t={t}>{editPilgrimState&&<div><Input value={epName} onChange={setEpName} placeholder="الاسم" style={{marginBottom:10}}/><Input value={epPhone} onChange={setEpPhone} placeholder="الهاتف" style={{marginBottom:10}}/><Input value={epRoom} onChange={setEpRoom} placeholder="الغرفة" style={{marginBottom:10}}/><Btn onClick={savePilgrimEdit} color="#22C55E" style={{width:"100%"}}>💾 حفظ</Btn></div>}</Modal>
+      <Modal open={!!editPilgrimState} onClose={()=>setEditPilgrimState(null)} title="✏️ تعديل" t={t}>{editPilgrimState&&<div>
+        <div style={{fontSize:11,color:t.textDim,marginBottom:4}}>الاسم</div>
+        <Input value={epName} onChange={setEpName} placeholder="الاسم" style={{marginBottom:10}}/>
+        <div style={{fontSize:11,color:t.textDim,marginBottom:4}}>الهاتف</div>
+        <Input value={epPhone} onChange={setEpPhone} placeholder="الهاتف" style={{marginBottom:10}}/>
+        <div style={{fontSize:11,color:t.textDim,marginBottom:4}}>الغرفة</div>
+        <Input value={epRoom} onChange={setEpRoom} placeholder="الغرفة" style={{marginBottom:10}}/>
+        <div style={{fontSize:11,color:t.textDim,marginBottom:4}}>رقم العائلة (اتركه فارغاً للإزالة من أي عائلة)</div>
+        <Input value={epFamilyNum} onChange={setEpFamilyNum} placeholder="رقم العائلة" style={{marginBottom:8}}/>
+        {epFamilyNum.trim()&&<label style={{fontSize:12,color:"#C8A951",display:"flex",alignItems:"center",gap:6,marginBottom:12,cursor:"pointer",padding:"8px 10px",background:"rgba(200,169,81,0.08)",borderRadius:8,border:"1px solid rgba(200,169,81,0.2)"}}><input type="checkbox" checked={epIsHead} onChange={e=>setEpIsHead(e.target.checked)}/> 👑 رب العائلة</label>}
+        <Btn onClick={savePilgrimEdit} color="#22C55E" style={{width:"100%"}}>💾 حفظ</Btn>
+      </div>}</Modal>
 
       {/* Family modal */}
       <Modal open={familyModal} onClose={()=>setFamilyModal(false)} title="العائلات" width={500} t={t}>
@@ -741,10 +1064,44 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
         <div style={{maxHeight:400,overflowY:"auto",display:"grid",gap:4}}>{homeNotBoarded.map(s=>(
           <div key={s.id} style={{padding:"10px 12px",borderRadius:8,background:t.bgCard,border:`1px solid ${t.border}`}}>
             <div style={{fontSize:13,fontWeight:600}}>{s.name}</div>
+            {s.familyNum&&<div style={{fontSize:10,color:"#C8A951",marginTop:2,fontWeight:600}}>{s.isHead?"👑 ":"👥 "}عائلة {s.familyNum}</div>}
             {s.room&&<div style={{fontSize:10,color:t.textDim,marginTop:2}}>غرفة {s.room}</div>}
             {s.phone&&<div style={{fontSize:10,color:t.textDim}}>📱 {s.phone}</div>}
           </div>
         ))}</div>}
+      </Modal>
+
+      {/* Not returned modal (return mode) */}
+      <Modal open={notReturnedModal} onClose={()=>setNotReturnedModal(false)} title="⚠️ لم يعد من الذهاب بعد" width={520} t={t}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,gap:8,flexWrap:"wrap"}}>
+          <div style={{fontSize:12,color:t.textDim}}>{notReturned.length} حاج لم يعد</div>
+          <Btn onClick={copyNotReturnedList} disabled={notReturned.length===0} color="#EF4444" small>{copied==="notReturned"?"✅ تم النسخ":"📋 نسخ الكل"}</Btn>
+        </div>
+        {notReturned.length===0?<div style={{padding:20,textAlign:"center",color:"#22C55E",fontSize:13}}>✅ الجميع عاد</div>:
+        <div style={{maxHeight:400,overflowY:"auto",display:"grid",gap:8}}>{Object.entries(notReturnedFamilies).map(([fn,members])=>{
+          if(fn==="_individuals"){
+            return(<div key="indiv" style={{padding:10,borderRadius:10,background:"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.2)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,gap:6}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#EF4444"}}>🧍 أفراد بدون عائلة ({members.length})</div>
+                <Btn onClick={()=>copySingleFamily("_individuals",members)} color="#EF4444" small style={{fontSize:10,padding:"4px 8px"}}>{copied===`fam-_individuals`?"✅":"📋 نسخ"}</Btn>
+              </div>
+              {members.map(s=>(<div key={s.id} style={{padding:"6px 10px",borderRadius:6,background:t.bgCard,fontSize:12,marginBottom:4}}>
+                {s.name}{s.room?` (غ${s.room})`:""}{s.phone?` 📱${s.phone}`:""}
+              </div>))}
+            </div>);
+          }
+          const head=members.find(m=>m.isHead);
+          return(<div key={fn} style={{padding:12,borderRadius:10,background:"rgba(200,169,81,0.08)",border:"1px solid rgba(200,169,81,0.25)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,gap:6}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#C8A951"}}>👨‍👩‍👧‍👦 عائلة {fn} — {members.length} فرد {head&&`(رب: ${head.name})`}</div>
+              <Btn onClick={()=>copySingleFamily(fn,members)} color="#C8A951" small style={{fontSize:10,padding:"4px 8px"}}>{copied===`fam-${fn}`?"✅":"📋 نسخ"}</Btn>
+            </div>
+            <div style={{display:"grid",gap:4}}>{members.map(s=>(
+              <div key={s.id} style={{padding:"6px 10px",borderRadius:6,background:t.bgCard,fontSize:12}}>
+                {s.isHead?"👑 ":""}{s.name}{s.room?` (غ${s.room})`:""}
+              </div>))}</div>
+          </div>);
+        })}</div>}
       </Modal>
 
       {/* Bus admin management */}
@@ -879,12 +1236,105 @@ const TrackingPage=({trackingId})=>{
   );
 };
 
+/* ═══════ CAR REQUEST PAGE (public, no login) ═══════ */
+const CarRequestPage=()=>{
+  const t=THEMES["dark"];
+  const[name,setName]=useState("");
+  const[phone,setPhone]=useState("");
+  const[committee,setCommittee]=useState("");
+  const[customCommittee,setCustomCommittee]=useState("");
+  const[vehicleType,setVehicleType]=useState("");
+  const[dateTime,setDateTime]=useState("");
+  const[destination,setDestination]=useState("");
+  const[duration,setDuration]=useState("");
+  const[notes,setNotes]=useState("");
+  const[submitting,setSubmitting]=useState(false);
+  const[done,setDone]=useState(false);
+  const[error,setError]=useState("");
+
+  const submit=async()=>{
+    setError("");
+    const finalCommittee=committee==="__other__"?customCommittee.trim():committee;
+    if(!name.trim()||!phone.trim()||!finalCommittee||!vehicleType||!dateTime||!destination.trim()||!duration.trim()){
+      setError("الرجاء تعبئة جميع الحقول المطلوبة");return;
+    }
+    setSubmitting(true);
+    try{
+      await saveCarRequest({
+        name:name.trim(),phone:phone.trim(),committee:finalCommittee,vehicleType,
+        dateTime,destination:destination.trim(),duration:duration.trim(),notes:notes.trim()
+      });
+      setDone(true);
+    }catch(e){setError("حدث خطأ. حاول مرة أخرى.");}
+    setSubmitting(false);
+  };
+
+  if(done){
+    return(<div style={{minHeight:"100vh",background:t.loginBg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,direction:"rtl",fontFamily:"'IBM Plex Sans Arabic',sans-serif",color:t.text}}>
+      <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+      <div style={{fontSize:80,marginBottom:20}}>✅</div>
+      <div style={{fontSize:24,fontWeight:800,marginBottom:12,color:"#22C55E"}}>تم استلام طلبك</div>
+      <div style={{fontSize:15,color:t.textMuted,textAlign:"center",maxWidth:400,lineHeight:1.8}}>سيتم التواصل معك قريباً من قبل مشرف السيارات</div>
+      <button onClick={()=>{setDone(false);setName("");setPhone("");setCommittee("");setCustomCommittee("");setVehicleType("");setDateTime("");setDestination("");setDuration("");setNotes("");}} style={{marginTop:32,padding:"14px 32px",borderRadius:12,background:"rgba(6,182,212,0.15)",border:"1px solid rgba(6,182,212,0.35)",color:"#06B6D4",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📝 طلب آخر</button>
+    </div>);
+  }
+
+  const selectStyle={width:"100%",background:t.loginInput,border:`1px solid ${t.borderInput}`,color:t.text,borderRadius:10,padding:"14px 12px",fontSize:15,outline:"none",boxSizing:"border-box",fontFamily:"inherit",marginBottom:12};
+  const inputStyle={...selectStyle};
+  const optStyle={background:"#1E293B",color:"#F1F5F9"};
+  const labelStyle={fontSize:13,fontWeight:600,color:t.textMuted,marginBottom:6,display:"block"};
+
+  return(<div style={{minHeight:"100vh",background:t.loginBg,padding:"24px 16px",direction:"rtl",fontFamily:"'IBM Plex Sans Arabic',sans-serif",color:t.text}}>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800&family=Amiri:wght@700&display=swap" rel="stylesheet"/>
+    <div style={{maxWidth:480,margin:"0 auto"}}>
+      <div style={{textAlign:"center",marginBottom:24}}>
+        <div style={{fontSize:64,marginBottom:12}}>🚗</div>
+        <div style={{fontSize:28,fontWeight:800,color:"#C8A951",fontFamily:"'Amiri',serif",lineHeight:1.2}}>طلب وسيلة نقل</div>
+        <div style={{width:60,height:3,background:"linear-gradient(90deg,transparent,#C8A951,transparent)",margin:"12px auto 0"}}/>
+      </div>
+      <div style={{background:t.loginCard,borderRadius:16,padding:"24px 20px",border:`1px solid ${t.border}`}}>
+        <label style={labelStyle}>اسم صاحب الطلب *</label>
+        <input value={name} onChange={e=>setName(e.target.value)} placeholder="الاسم الكامل" style={inputStyle}/>
+        <label style={labelStyle}>رقم الجوال *</label>
+        <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="رقم الجوال" inputMode="tel" style={inputStyle}/>
+        <label style={labelStyle}>اللجنة *</label>
+        <select value={committee} onChange={e=>setCommittee(e.target.value)} style={selectStyle}>
+          <option value="" style={optStyle}>— اختر اللجنة —</option>
+          {DEFAULT_COMMITTEES.map(c=><option key={c} value={c} style={optStyle}>{c}</option>)}
+          <option value="__other__" style={optStyle}>أخرى...</option>
+        </select>
+        {committee==="__other__"&&<input value={customCommittee} onChange={e=>setCustomCommittee(e.target.value)} placeholder="اكتب اسم اللجنة" style={inputStyle}/>}
+        <label style={labelStyle}>نوع وسيلة النقل المطلوبة *</label>
+        <select value={vehicleType} onChange={e=>setVehicleType(e.target.value)} style={selectStyle}>
+          <option value="" style={optStyle}>— اختر النوع —</option>
+          {VEHICLE_TYPES.map(v=><option key={v.value} value={v.value} style={optStyle}>{v.label}</option>)}
+        </select>
+        <label style={labelStyle}>اليوم والوقت المطلوب *</label>
+        <input type="datetime-local" value={dateTime} onChange={e=>setDateTime(e.target.value)} style={inputStyle}/>
+        <label style={labelStyle}>الوجهة *</label>
+        <input value={destination} onChange={e=>setDestination(e.target.value)} placeholder="إلى أين؟" style={inputStyle}/>
+        <label style={labelStyle}>المدة *</label>
+        <input value={duration} onChange={e=>setDuration(e.target.value)} placeholder="مثال: ساعة، نصف ساعة، يوم كامل" style={inputStyle}/>
+        <label style={labelStyle}>معلومات أخرى (اختياري)</label>
+        <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="أي ملاحظات إضافية..." style={{...inputStyle,minHeight:80,resize:"vertical",fontFamily:"inherit"}}/>
+        {error&&<div style={{color:"#EF4444",fontSize:13,textAlign:"center",marginBottom:12,fontWeight:600,padding:"8px 12px",background:"rgba(239,68,68,0.08)",borderRadius:8}}>{error}</div>}
+        <button onClick={submit} disabled={submitting} style={{width:"100%",padding:16,borderRadius:12,border:"none",cursor:submitting?"not-allowed":"pointer",background:submitting?"#475569":"linear-gradient(135deg,#06B6D4,#0891B2)",color:"#fff",fontSize:18,fontWeight:800,marginTop:8,fontFamily:"inherit",opacity:submitting?0.6:1}}>{submitting?"جاري الإرسال...":"📨 إرسال الطلب"}</button>
+      </div>
+      <div style={{textAlign:"center",marginTop:20}}>
+        <a href="/" style={{color:t.textDim,fontSize:13,textDecoration:"underline"}}>← الصفحة الرئيسية</a>
+      </div>
+      <div style={{marginTop:24,fontSize:12,color:t.textDim,textAlign:"center",opacity:0.7}}>برمجة وتصميم / خالد محمود المرزوقي</div>
+    </div>
+  </div>);
+};
+
 /* ═══════ MAIN APP ═══════ */
 /* ═══════ APP ROUTER ═══════ */
 export default function AppRouter() {
   const path=window.location.pathname;
   const trackMatch=path.match(/\/track\/(.+)/);
   if(trackMatch) return <TrackingPage trackingId={trackMatch[1]}/>;
+  if(path==="/request-car"||path==="/request-car/") return <CarRequestPage/>;
   return <MainApp/>;
 }
 
@@ -894,23 +1344,32 @@ function MainApp() {
   const[theme,setThemeState]=useState(getTheme);
   const toggleTheme=()=>{const n=theme==="dark"?"light":"dark";setThemeState(n);setThemeStorage(n);};
   const t=THEMES[theme];
-  const DEFAULT_SETTINGS={adminPin:"2026",viewerPin:"0000",carSupervisorPin:"7070",openBoarding:false};
+  const DEFAULT_SETTINGS={adminPin:"2026",viewerPin:"0000",carSupervisorPin:"7070",openBoarding:false,boardingMode:"normal"};
   const[settings,setSettings]=useState(DEFAULT_SETTINGS);
   const[busConfigs,setBusConfigs]=useState(INITIAL_BUSES);
   const[busesData,setBusesData]=useState(INITIAL_BUS_DATA);
   const[cars,setCars]=useState([]);
   const[savedUsers,setSavedUsers]=useState([]);
   const[savedReceivers,setSavedReceivers]=useState([]);
-  const[confirmDisableOpen,setConfirmDisableOpen]=useState(false);
   const[loading,setLoading]=useState(true);
+  const[pendingMode,setPendingMode]=useState(null);
 
+  const settingsReceivedRef=useRef(false);
   useEffect(()=>{const unsubs=[];
     unsubs.push(listenToAllBuses(buses=>{if(buses.length>0){setBusesData(INITIAL_BUS_DATA.map(ib=>{const fb=buses.find(b=>b.id===ib.id);return fb||ib;}));}setLoading(false);}));
     unsubs.push(listenToBusConfigs(configs=>{if(configs)setBusConfigs(configs);}));
     // Listen to settings — merge with defaults to ensure all keys exist
     unsubs.push(listenToSettings("main",data=>{
       if(data){
-        setSettings(prev=>({...DEFAULT_SETTINGS,...data}));
+        settingsReceivedRef.current=true;
+        setSettings(prev=>{
+          const merged={...DEFAULT_SETTINGS,...data};
+          // Migrate old openBoarding(bool) to new boardingMode(string)
+          if(typeof merged.boardingMode==="undefined"){
+            merged.boardingMode=merged.openBoarding?"open":"normal";
+          }
+          return merged;
+        });
       }
     }));
     // Also check old-format settings from previous version
@@ -919,10 +1378,13 @@ function MainApp() {
         setSettings(prev=>({...prev,adminPin:data.pin}));
       }
     }));
-    // If settings doc doesn't exist after 2 seconds, create it with defaults
+    // If settings doc doesn't exist after 3 seconds AND we haven't received any data, create it with defaults.
+    // Critical: only write defaults if we never received anything (otherwise we'd overwrite real data).
     const initTimer=setTimeout(()=>{
-      saveSettings("main",DEFAULT_SETTINGS);
-    },2000);
+      if(!settingsReceivedRef.current){
+        saveSettings("main",DEFAULT_SETTINGS);
+      }
+    },3000);
     unsubs.push(listenToCars(setCars));
     unsubs.push(listenToSavedNames("carUsers",names=>{if(names)setSavedUsers(names);}));
     unsubs.push(listenToSavedNames("keyReceivers",names=>{if(names)setSavedReceivers(names);}));
@@ -935,11 +1397,45 @@ function MainApp() {
   const updateBusConfigsFn=(configs)=>{setBusConfigs(configs);saveBusConfigs(configs);};
 
   // Helper: returns the count that matters for capacity check
-  // In open boarding: only checked-in students count toward capacity
-  // In normal mode: all assigned students count
-  const getBusCount=(busStudents)=>settings.openBoarding
+  // In open mode: only checked-in students count toward capacity
+  // In other modes: all assigned students count
+  const getBusCount=(busStudents)=>settings.boardingMode==="open"
     ? busStudents.filter(s=>s.checkedIn).length
     : busStudents.length;
+
+  // setBoardingMode handles all transitions cleanly:
+  //  → "normal": reset checkedIn, wentOut, boardedBus, return cross-boarded
+  //  → "open": no data change, just allow cross-boarding
+  //  → "roundtrip-outbound": reset checkedIn (start fresh outbound check-in)
+  //  → "roundtrip-return": for each currently checkedIn student, set wentOut=true; then reset checkedIn
+  //                       (only when transitioning FROM outbound; if already in return, no-op)
+  const setBoardingMode=(newMode)=>{
+    const oldMode=settings.boardingMode;
+    if(oldMode===newMode)return;
+    updateSettings({...settings,boardingMode:newMode,openBoarding:newMode==="open"});
+    setBusesData(prev=>{
+      const u=prev.map(b=>{
+        let students=b.students;
+        if(newMode==="normal"){
+          // Full reset: clear wentOut, boardedBus, return all cross-boarded pilgrims
+          students=students.filter(s=>s.homeBusId===b.id).map(s=>({...s,boardedBus:null,wentOut:false,checkedIn:false,time:null,method:null,addedBy:""}));
+        } else if(newMode==="roundtrip-outbound"){
+          // Start fresh outbound; clear any prior round-trip data
+          students=students.filter(s=>s.homeBusId===b.id).map(s=>({...s,boardedBus:null,wentOut:false,checkedIn:false,time:null,method:null,addedBy:""}));
+        } else if(newMode==="roundtrip-return"&&oldMode==="roundtrip-outbound"){
+          // Lock in: those checked in are the ones who went out; reset checkedIn for return tracking
+          students=students.map(s=>({...s,wentOut:!!s.checkedIn,checkedIn:false,time:null,method:null,addedBy:""}));
+        } else if(newMode==="open"){
+          // From any mode: clear wentOut just in case
+          students=students.map(s=>({...s,wentOut:false}));
+        }
+        const nb={...b,students};
+        persistBus(b.id,nb);
+        return nb;
+      });
+      return u;
+    });
+  };
 
   const addPilgrim=(busId,data)=>{setBusesData(prev=>{const u=prev.map(b=>{if(b.id!==busId||getBusCount(b.students)>=BUS_CAPACITY)return b;const nb={...b,students:[...b.students,{id:nid(),name:data.name,type:data.type||"pilgrim",room:data.room||"",phone:data.phone||"",familyNum:data.familyNum||"",isHead:!!data.isHead,checkedIn:false,time:null,method:null,homeBusId:busId,boardedBus:null}]};persistBus(busId,nb);return nb;});return u;});};
   const deletePilgrim=(busId,pid)=>{
@@ -960,7 +1456,7 @@ function MainApp() {
   const transferPilgrim=(fromBus,pid,toBus)=>{setBusesData(prev=>{const from=prev.find(b=>b.id===fromBus);const p=from?.students.find(s=>s.id===pid);if(!p)return prev;const target=prev.find(b=>b.id===toBus);if(getBusCount(target.students)>=BUS_CAPACITY)return prev;const u=prev.map(b=>{if(b.id===fromBus){const nb={...b,students:b.students.filter(s=>s.id!==pid)};persistBus(fromBus,nb);return nb;}if(b.id===toBus){const nb={...b,students:[...b.students,{...p,homeBusId:toBus,checkedIn:false,time:null,familyNum:"",isHead:false}]};persistBus(toBus,nb);return nb;}return b;});return u;});};
   const bulkImport=(entries)=>{setBusesData(prev=>{const nb=prev.map(b=>({...b,students:[...b.students]}));entries.forEach(e=>{const bus=nb.find(b=>b.id===e.busId);if(!bus||bus.students.length>=BUS_CAPACITY)return;bus.students.push({id:nid(),name:e.name,type:e.type||"pilgrim",room:e.room||"",phone:"",familyNum:e.familyNum||"",isHead:!!e.isHead,checkedIn:false,time:null,method:null,homeBusId:e.busId,boardedBus:null});});nb.forEach(b=>persistBus(b.id,b));return nb;});};
   const crossBoardPilgrim=(pid,homeBusId,targetBusId,addedBy)=>{setBusesData(prev=>{const home=prev.find(b=>b.id===homeBusId);const p=home?.students.find(s=>s.id===pid);if(!p)return prev;const target=prev.find(b=>b.id===targetBusId);
-    const isOpen=settings.openBoarding;
+    const isOpen=settings.boardingMode==="open";
     const targetCount=isOpen
       ? target.students.filter(s=>s.checkedIn).length
       : target.students.length;
@@ -985,7 +1481,6 @@ function MainApp() {
       if(b.id===homeBusId){const nb={...b,students:b.students.map(s=>s.id===pid?{...s,boardedBus:null,checkedIn:false,time:null,addedBy:""}:s)};persistBus(homeBusId,nb);return nb;}
       return b;
     });return u;});};
-  const disableOpenBoarding=()=>{updateSettings({...settings,openBoarding:false});setBusesData(prev=>{const u=prev.map(b=>{const nb={...b,students:b.students.filter(s=>s.homeBusId===b.id).map(s=>({...s,boardedBus:null}))};persistBus(b.id,nb);return nb;});return u;});};
 
   const updateBusAdmins=(busId,admins)=>{const updated=busConfigs.map(bc=>bc.id===busId?{...bc,busAdmins:admins}:bc);updateBusConfigsFn(updated);};
 
@@ -1006,6 +1501,39 @@ function MainApp() {
   const isCarSupervisor=auth.role==="carSupervisor";
   const readOnly=isViewer;
 
+  // Compute the current user's display name (used to record who checked in each pilgrim)
+  let currentUserName="";
+  if(isAdmin) currentUserName="الإدارة";
+  else if(isSupervisor){
+    const myBus=busConfigs.find(b=>b.id===auth.busId);
+    currentUserName=myBus?`المشرف ${myBus.supervisor}`:"المشرف";
+  } else if(isBusAdmin){
+    const myBus=busConfigs.find(b=>b.id===auth.busId);
+    const me=myBus?.busAdmins?.find(a=>a.id===auth.adminId);
+    currentUserName=me?`الإداري ${me.name}`:"الإداري";
+  }
+
+  // Pending mode change (shows confirmation modal for destructive transitions)
+  const requestModeChange=(newMode)=>{
+    const cur=settings.boardingMode||"normal";
+    if(cur===newMode)return;
+    // Destructive transitions that need confirmation:
+    //   open → anything (will clear cross-boards)
+    //   roundtrip-outbound → normal/open (will discard outbound data)
+    //   roundtrip-return → normal/open (will discard round-trip data)
+    //   normal → roundtrip-outbound or open: no confirmation needed
+    //   roundtrip-outbound → roundtrip-return: no confirm; this is the natural progression
+    const destructive=
+      (cur==="open"&&newMode!=="open")||
+      (cur==="roundtrip-outbound"&&(newMode==="normal"||newMode==="open"))||
+      (cur==="roundtrip-return"&&(newMode==="normal"||newMode==="open"));
+    if(destructive){
+      setPendingMode(newMode);
+    } else {
+      setBoardingMode(newMode);
+    }
+  };
+
   return(
     <div dir="rtl" style={{minHeight:"100vh",background:t.bg,color:t.text,fontFamily:"'IBM Plex Sans Arabic',sans-serif"}}>
       <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800&family=JetBrains+Mono:wght@700;900&family=Amiri:wght@700&display=swap" rel="stylesheet"/>
@@ -1020,7 +1548,7 @@ function MainApp() {
         </div>
       </div>
       <div style={{padding:20,maxWidth:1100,margin:"0 auto"}}>
-        {(isAdmin||isViewer)&&view==="dashboard"&&<AdminDashboard busesData={busesData} busConfigs={busConfigs} onSelectBus={id=>setView(id)} onLogout={()=>{setAuth(null);setView("dashboard");}} openBoarding={settings.openBoarding} onEnableOpen={()=>updateSettings({...settings,openBoarding:true})} onDisableOpen={()=>{if(settings.openBoarding)setConfirmDisableOpen(true);}} onGoTo={v=>setView(v)} t={t} readOnly={readOnly}/>}
+        {(isAdmin||isViewer)&&view==="dashboard"&&<AdminDashboard busesData={busesData} busConfigs={busConfigs} onSelectBus={id=>setView(id)} onLogout={()=>{setAuth(null);setView("dashboard");}} boardingMode={settings.boardingMode||"normal"} onSetMode={requestModeChange} onGoTo={v=>setView(v)} t={t} readOnly={readOnly}/>}
         {isAdmin&&view==="pilgrim-mgmt"&&<PilgrimMgmtPage busesData={busesData} busConfigs={busConfigs} onAdd={addPilgrim} onDelete={deletePilgrim} onEdit={editPilgrim} onTransfer={transferPilgrim} onBulkImport={bulkImport} onBack={()=>setView("dashboard")} t={t}/>}
         {isAdmin&&view==="bus-mgmt"&&<BusMgmtPage busConfigs={busConfigs} onUpdate={updateBusConfigsFn} settings={settings} onUpdateSettings={updateSettings} onBack={()=>setView("dashboard")} t={t}/>}
         {(isAdmin||isViewer||isCarSupervisor)&&view==="cars"&&<CarMgmtPage cars={cars} onSaveCar={saveCar} onDeleteCar={deleteCarFb} onAddHistory={addCarHistory} savedUsers={savedUsers} savedReceivers={savedReceivers} onSaveUsers={n=>saveSavedNames("carUsers",n)} onSaveReceivers={n=>saveSavedNames("keyReceivers",n)} onBack={()=>(isAdmin||isViewer)?setView("dashboard"):setAuth(null)} t={t} readOnly={isViewer} baseUrl={baseUrl}/>}
@@ -1029,18 +1557,24 @@ function MainApp() {
           onUpdate={data=>updateBus(selBus.id,data)}
           onCrossBoard={crossBoardPilgrim}
           onRemoveCrossBoarded={removeCrossBoarded}
-          openBoarding={settings.openBoarding}
+          boardingMode={settings.boardingMode||"normal"}
           canCheckin={isAdmin||isSupervisor||(isBusAdmin&&auth.canCheckin)}
           canManageFamilies={isAdmin||isSupervisor}
           canChangeStatus={isAdmin||isSupervisor}
           busAdmins={selConfig.busAdmins||[]}
           onUpdateBusAdmins={isSupervisor||isAdmin?(admins)=>updateBusAdmins(selBus.id,admins):null}
           settings={settings}
+          currentUserName={currentUserName}
           t={t}/>}
       </div>
-      <Modal open={confirmDisableOpen} onClose={()=>setConfirmDisableOpen(false)} title="تأكيد" t={t}>
-        <div style={{fontSize:14,marginBottom:20}}>إنهاء الركوب المفتوح وإرجاع الحجاج؟</div>
-        <div style={{display:"flex",gap:8}}><Btn onClick={()=>setConfirmDisableOpen(false)} color="transparent" style={{flex:1,border:`1px solid ${t.border}`,color:t.textMuted}}>إلغاء</Btn><Btn onClick={()=>{disableOpenBoarding();setConfirmDisableOpen(false);}} color="#22C55E" style={{flex:1}}>✅ نعم</Btn></div>
+      <Modal open={!!pendingMode} onClose={()=>setPendingMode(null)} title="تأكيد تغيير الوضع" t={t}>
+        <div style={{fontSize:14,marginBottom:8}}>
+          {pendingMode==="normal"&&"إنهاء التفويج الحالي والعودة للوضع العادي؟"}
+          {pendingMode==="open"&&"تغيير الوضع إلى التفويج المفتوح؟ سيتم إنهاء التفويج الحالي."}
+          {pendingMode==="roundtrip-outbound"&&"بدء تفويج ذهاب جديد؟ سيتم مسح أي بيانات تفويج سابقة."}
+        </div>
+        <div style={{fontSize:12,color:t.textDim,marginBottom:20,padding:"8px 12px",background:"rgba(239,68,68,0.08)",borderRadius:8,border:"1px solid rgba(239,68,68,0.2)"}}>⚠️ سيتم مسح حالة الحضور الحالية لجميع الباصات.</div>
+        <div style={{display:"flex",gap:8}}><Btn onClick={()=>setPendingMode(null)} color="transparent" style={{flex:1,border:`1px solid ${t.border}`,color:t.textMuted}}>إلغاء</Btn><Btn onClick={()=>{setBoardingMode(pendingMode);setPendingMode(null);}} color="#22C55E" style={{flex:1}}>✅ نعم، متابعة</Btn></div>
       </Modal>
     </div>
   );
