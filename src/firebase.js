@@ -117,4 +117,39 @@ export const listenToCarRequestsLog = (callback) => {
   });
 };
 
+
+// ═══════ BOARDING MODE (isolated doc — only written by explicit mode changes) ═══════
+export const saveBoardingMode = async (mode) => {
+  try { await setDoc(doc(db, "settings", "boardingMode"), { mode, updatedAt: Date.now() }); }
+  catch (e) { console.error("saveBoardingMode:", e); }
+};
+export const listenToBoardingMode = (callback) => {
+  return onSnapshot(doc(db, "settings", "boardingMode"), (snap) => {
+    if (snap.exists()) callback(snap.data().mode || "normal");
+  });
+};
+
+// ═══════ BUS COMPLETION ("تام" status per bus) ═══════
+export const saveBusComplete = async (busId, complete) => {
+  try { await setDoc(doc(db, "busComplete", String(busId)), { complete, updatedAt: Date.now() }); }
+  catch (e) { console.error("saveBusComplete:", e); }
+};
+export const listenToBusComplete = (callback) => {
+  return onSnapshot(collection(db, "busComplete"), (snap) => {
+    const map = {}; snap.forEach((d) => { map[d.id] = d.data().complete; }); callback(map);
+  });
+};
+
+// ═══════ RETURN TRACKING (public return-confirmation sheet) ═══════
+// Single shared doc for the whole campaign: { [pilgrimId]: {returned, by, at} }
+export const saveReturnAttendance = async (attendance) => {
+  try { await setDoc(doc(db, "returnTracking", "main"), { attendance, updatedAt: Date.now() }); }
+  catch (e) { console.error("saveReturnAttendance:", e); }
+};
+export const listenToReturnAttendance = (callback) => {
+  return onSnapshot(doc(db, "returnTracking", "main"), (snap) => {
+    callback(snap.exists() ? (snap.data().attendance || {}) : {});
+  });
+};
+
 export { db, storage };
