@@ -145,7 +145,7 @@ const SimpleMap=({locations,height,busConfigs})=>{
     locs.forEach(l=>{const ic=mkIcon(l.color||"#C8A951",l.status||"stopped");markers.current[l.id]=L.marker([l.lat,l.lng],{icon:ic}).addTo(m).bindPopup(`<div style="text-align:center;font-family:sans-serif;font-weight:700;">${l.label||""}</div>`);});
     if(locs.length)m.fitBounds(locs.map(l=>[l.lat,l.lng]),{padding:[40,40],maxZoom:14});
     return()=>{m.remove();mapRef.current=null;markers.current={};};
-  },[ready]);
+  },[ready]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(()=>{if(!mapRef.current||!ready)return;locations.forEach(l=>{const mk=markers.current[l.id];if(mk&&l.lat&&l.lng){mk.setLatLng([l.lat,l.lng]);mk.setIcon(mkIcon(l.color||"#C8A951",l.status||"stopped"));}});},[locations,ready]);
   return(<div style={{position:"relative",borderRadius:16,overflow:"hidden",border:"1px solid rgba(255,255,255,0.08)",marginBottom:20}}><div ref={ref} style={{width:"100%",height:height||300}}/>{!ready&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(15,23,42,0.95)",color:"#64748B",fontSize:13}}>جاري التحميل...</div>}</div>);
 };
@@ -658,7 +658,6 @@ const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,boardingMode,on
         }
         const allHome=busesData.flatMap(b2=>b2.students).filter(s=>s.homeBusId===bus.id);
         const notReturned=isReturn?allHome.filter(s=>s.wentOut&&s.type!=="admin"&&!retAtt[s.id]?.returned).length:0;
-        const retCount=isReturn?allHome.filter(s=>s.wentOut&&s.type!=="admin"&&retAtt[s.id]?.returned).length:0;
         const done=!!(busComplete&&busComplete[bus.id]);
         return(
         <div key={bus.id} onClick={()=>onSelectBus(bus.id)} style={{background:done?"rgba(34,197,94,0.08)":t.bgCard,borderRadius:16,border:`2px solid ${done?"#22C55E":t.border}`,padding:20,cursor:"pointer",position:"relative",overflow:"hidden"}}
@@ -760,7 +759,7 @@ const BusLeaderView=({busData,busConfig,allBusConfigs,allBusesData,onBack,onUpda
   }
   const familyNums=[...new Set(students.filter(s=>s.familyNum).map(s=>s.familyNum))];
 
-  useEffect(()=>{if(!navigator.geolocation){setGpsStatus("simulated");return;}navigator.geolocation.getCurrentPosition(p=>{setGpsStatus("active");onUpdate({...busData,location:{lat:p.coords.latitude,lng:p.coords.longitude}});},()=>setGpsStatus("simulated"),{enableHighAccuracy:true,timeout:8000});geoRef.current=navigator.geolocation.watchPosition(p=>{setGpsStatus("active");onUpdate(prev=>({...(prev||busData),location:{lat:p.coords.latitude,lng:p.coords.longitude}}));},()=>setGpsStatus("simulated"),{enableHighAccuracy:true,maximumAge:5000,timeout:15000});return()=>{if(geoRef.current!==null)navigator.geolocation.clearWatch(geoRef.current);};},[]);
+  useEffect(()=>{if(!navigator.geolocation){setGpsStatus("simulated");return;}navigator.geolocation.getCurrentPosition(p=>{setGpsStatus("active");onUpdate({...busData,location:{lat:p.coords.latitude,lng:p.coords.longitude}});},()=>setGpsStatus("simulated"),{enableHighAccuracy:true,timeout:8000});geoRef.current=navigator.geolocation.watchPosition(p=>{setGpsStatus("active");onUpdate(prev=>({...(prev||busData),location:{lat:p.coords.latitude,lng:p.coords.longitude}}));},()=>setGpsStatus("simulated"),{enableHighAccuracy:true,maximumAge:5000,timeout:15000});return()=>{if(geoRef.current!==null)navigator.geolocation.clearWatch(geoRef.current);};},[]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const togglePilgrim=(pid)=>{
     if(!canCheckin)return;
@@ -1375,6 +1374,7 @@ const ReturnSheetPage=()=>{
   const[supervisorName,setSupervisorName]=useState("");
   const[nameSet,setNameSet]=useState(false);
   const[buses,setBuses]=useState([]);
+  const[busesLoaded,setBusesLoaded]=useState(false);
   const[attendance,setAttendance]=useState({});
   const[search,setSearch]=useState("");
   const[busFilter,setBusFilter]=useState(0);
@@ -1387,11 +1387,11 @@ const ReturnSheetPage=()=>{
 
   useEffect(()=>{
     try{const saved=localStorage.getItem("return_supervisor_name");if(saved){setSupervisorName(saved);setNameSet(true);}}catch(e){}
-    const u1=listenToAllBuses(bs=>{if(bs.length>0)setBuses(INITIAL_BUS_DATA.map(ib=>{const fb=bs.find(b=>b.id===ib.id);return fb||ib;}));});
+    const u1=listenToAllBuses(bs=>{setBuses(bs.length>0?INITIAL_BUS_DATA.map(ib=>{const fb=bs.find(b=>b.id===ib.id);return fb||ib;}):INITIAL_BUS_DATA);setBusesLoaded(true);});
     const u2=listenToReturnAttendance(att=>{attRef.current=att||{};setAttendance(att||{});});
     const u3=listenToBusConfigs(c=>{if(c)setConfigs(c);});
     return()=>{u1();u2();u3();};
-  },[]);
+  },[]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Only pilgrims who went out (wentOut === true), across all buses, by their home bus
   const pilgrims=buses.flatMap(b=>b.students).filter(s=>s.wentOut&&s.type!=="admin")
@@ -1459,10 +1459,15 @@ const ReturnSheetPage=()=>{
         </div>
       </div>
 
-      {pilgrims.length===0?(
+      {!busesLoaded?(
+        <div style={{maxWidth:640,margin:"60px auto",padding:24,textAlign:"center",color:t.textMuted,fontSize:14}}>
+          <div style={{fontSize:40,marginBottom:12}}>⏳</div>جاري تحميل البيانات...
+        </div>
+      ):pilgrims.length===0?(
         <div style={{maxWidth:640,margin:"40px auto",padding:24,textAlign:"center",color:t.textMuted,fontSize:14}}>
-          <div style={{fontSize:48,marginBottom:12}}>⏳</div>
-          لا توجد قائمة عودة نشطة حالياً.<br/>سيتم تفعيلها عندما تبدأ الإدارة مرحلة "تسجيل العودة".
+          <div style={{fontSize:48,marginBottom:12}}>🕌</div>
+          لا توجد قائمة عودة نشطة حالياً.<br/>
+          <span style={{fontSize:12,color:t.textDim,marginTop:8,display:"block"}}>سيتم تفعيلها عندما تبدأ الإدارة مرحلة "تسجيل العودة".</span>
         </div>
       ):(<div style={{maxWidth:640,margin:"0 auto",padding:"16px"}}>
         {/* Search + filters */}
@@ -1561,7 +1566,10 @@ function MainApp() {
     }));
     // Boarding mode lives in its OWN isolated document. Only ever written by explicit
     // mode-change actions (saveBoardingMode). Nothing else can touch it.
-    unsubs.push(listenToBoardingMode(mode=>{ if(mode) setBoardingModeState(mode); }));
+    // Guard: only update state if the value actually changed.
+    unsubs.push(listenToBoardingMode(mode=>{
+      if(mode) setBoardingModeState(prev=>prev===mode?prev:mode);
+    }));
     // Bus "تام" completion status
     unsubs.push(listenToBusComplete(setBusComplete));
     // Public return-tracking attendance (shared sheet)
@@ -1582,7 +1590,7 @@ function MainApp() {
     unsubs.push(listenToSavedNames("carUsers",names=>{if(names)setSavedUsers(names);}));
     unsubs.push(listenToSavedNames("keyReceivers",names=>{if(names)setSavedReceivers(names);}));
     return()=>{unsubs.forEach(u=>u());clearTimeout(initTimer);};
-  },[]);
+  },[]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const persistBus=(busId,data)=>{saveBusData(busId,data);};
   const updateBus=useCallback((busId,dataOrFn)=>{setBusesData(prev=>{const updated=prev.map(b=>{if(b.id!==busId)return b;const nd=typeof dataOrFn==="function"?{...b,...dataOrFn(b)}:dataOrFn;persistBus(busId,nd);return nd;});return updated;});},[]);
