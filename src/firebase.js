@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, getDocs, updateDoc, deleteDoc, query, orderBy } from "firebase/firestore";
+import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, deleteDoc } from "firebase/firestore";
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const firebaseConfig = {
@@ -136,7 +136,7 @@ export const saveBusComplete = async (busId, complete) => {
 };
 export const listenToBusComplete = (callback) => {
   return onSnapshot(collection(db, "busComplete"), (snap) => {
-    const map = {}; snap.forEach((d) => { map[d.id] = d.data().complete; }); callback(map);
+    const map = {}; snap.forEach((d) => { map[Number(d.id)] = d.data().complete; }); callback(map);
   });
 };
 
