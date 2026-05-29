@@ -1617,6 +1617,7 @@ function MainApp() {
     // Persist to the ISOLATED boardingMode document and update local state immediately
     setBoardingModeState(newMode);
     saveBoardingMode(newMode);
+    const enteringReturn=newMode==="roundtrip-return"&&oldMode!=="roundtrip-return";
     setBusesData(prev=>{
       const u=prev.map(b=>{
         let students=b.students;
@@ -1626,9 +1627,11 @@ function MainApp() {
         } else if(newMode==="roundtrip-outbound"){
           // Start fresh outbound; clear any prior round-trip data
           students=students.filter(s=>s.homeBusId===b.id).map(s=>({...s,boardedBus:null,wentOut:false,checkedIn:false,time:null,method:null,addedBy:""}));
-        } else if(newMode==="roundtrip-return"&&oldMode==="roundtrip-outbound"){
-          // Lock in: those checked in are the ones who went out; reset for return phase.
-          students=students.map(s=>({...s,wentOut:!!s.checkedIn,checkedIn:false,boardedBus:null,time:null,method:null,addedBy:""}));
+        } else if(enteringReturn){
+          // Lock in: everyone currently checked in is marked as "went out".
+          // This runs for ANY transition into return mode (not just from outbound),
+          // so the public return sheet is always populated correctly.
+          students=students.filter(s=>s.homeBusId===b.id).map(s=>({...s,wentOut:!!s.checkedIn,checkedIn:false,boardedBus:null,time:null,method:null,addedBy:""}));
         } else if(newMode==="open"){
           students=students.map(s=>({...s,wentOut:false}));
         }
@@ -1639,7 +1642,7 @@ function MainApp() {
       return u;
     });
     // When entering return mode, clear the shared return sheet so it starts fresh
-    if(newMode==="roundtrip-return"&&oldMode==="roundtrip-outbound"){
+    if(enteringReturn){
       saveReturnAttendance({});
     }
     // Any mode change resets every bus's "تام" completion status
