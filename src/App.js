@@ -658,7 +658,7 @@ const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,boardingMode,on
         }
         const allHome=busesData.flatMap(b2=>b2.students).filter(s=>s.homeBusId===bus.id);
         const notReturned=isReturn?allHome.filter(s=>s.wentOut&&s.type!=="admin"&&!retAtt[s.id]?.returned).length:0;
-        const done=!!(busComplete&&busComplete[bus.id]);
+        const done=!!bus.complete;
         return(
         <div key={bus.id} onClick={()=>onSelectBus(bus.id)} style={{background:done?"rgba(34,197,94,0.08)":t.bgCard,borderRadius:16,border:`2px solid ${done?"#22C55E":t.border}`,padding:20,cursor:"pointer",position:"relative",overflow:"hidden"}}
           onMouseEnter={e=>{e.currentTarget.style.background=done?"rgba(34,197,94,0.12)":t.bgCardHover;}} onMouseLeave={e=>{e.currentTarget.style.background=done?"rgba(34,197,94,0.08)":t.bgCard;}}>
@@ -1596,7 +1596,10 @@ function MainApp() {
   const updateBus=useCallback((busId,dataOrFn)=>{setBusesData(prev=>{const updated=prev.map(b=>{if(b.id!==busId)return b;const nd=typeof dataOrFn==="function"?{...b,...dataOrFn(b)}:dataOrFn;persistBus(busId,nd);return nd;});return updated;});},[]);
   const updateSettings=(s)=>{setSettings(s);saveSettings("main",s);};
   const updateBusConfigsFn=(configs)=>{setBusConfigs(configs);saveBusConfigs(configs);};
-  const toggleBusComplete=(busId,val)=>{setBusComplete(prev=>({...prev,[busId]:val}));saveBusComplete(busId,val);};
+  // تام is stored INSIDE the bus document (proven sync path), not a separate collection.
+  const toggleBusComplete=(busId,val)=>{
+    setBusesData(prev=>{const u=prev.map(b=>{if(b.id!==busId)return b;const nb={...b,complete:val};persistBus(busId,nb);return nb;});return u;});
+  };
 
   // Helper: returns the count that matters for capacity check
   // In open/return mode: only checked-in students count toward capacity
@@ -1635,7 +1638,7 @@ function MainApp() {
         } else if(newMode==="open"){
           students=students.map(s=>({...s,wentOut:false}));
         }
-        const nb={...b,students};
+        const nb={...b,students,complete:false};
         persistBus(b.id,nb);
         return nb;
       });
@@ -1645,9 +1648,6 @@ function MainApp() {
     if(enteringReturn){
       saveReturnAttendance({});
     }
-    // Any mode change resets every bus's "تام" completion status
-    [1,2,3,4,5,6,7].forEach(id=>saveBusComplete(id,false));
-    setBusComplete({});
   };
 
   const addPilgrim=(busId,data)=>{setBusesData(prev=>{const u=prev.map(b=>{if(b.id!==busId||getBusCount(b.students)>=BUS_CAPACITY)return b;const nb={...b,students:[...b.students,{id:nid(),name:data.name,type:data.type||"pilgrim",room:data.room||"",phone:data.phone||"",familyNum:data.familyNum||"",isHead:!!data.isHead,checkedIn:false,time:null,method:null,homeBusId:busId,boardedBus:null}]};persistBus(busId,nb);return nb;});return u;});};
@@ -1779,7 +1779,7 @@ function MainApp() {
           onUpdateBusAdmins={isSupervisor||isAdmin?(admins)=>updateBusAdmins(selBus.id,admins):null}
           settings={settings}
           currentUserName={currentUserName}
-          isComplete={!!busComplete[selBus.id]}
+          isComplete={!!selBus.complete}
           onToggleComplete={(val)=>toggleBusComplete(selBus.id,val)}
           returnAttendance={returnAttendance}
           t={t}/>}
