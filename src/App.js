@@ -1468,6 +1468,13 @@ const ReturnSheetPage=()=>{
           <div style={{fontSize:48,marginBottom:12}}>🕌</div>
           لا توجد قائمة عودة نشطة حالياً.<br/>
           <span style={{fontSize:12,color:t.textDim,marginTop:8,display:"block"}}>سيتم تفعيلها عندما تبدأ الإدارة مرحلة "تسجيل العودة".</span>
+          <div style={{marginTop:20,padding:12,background:t.bgCard,borderRadius:10,fontSize:11,color:t.textDim,direction:"ltr",textAlign:"left"}}>
+            <div style={{fontWeight:700,marginBottom:6,color:t.textMuted,direction:"rtl",textAlign:"right"}}>🔍 معلومات تشخيصية:</div>
+            عدد الباصات المحمّلة: {buses.length}<br/>
+            إجمالي الحجاج: {buses.flatMap(b=>b.students).length}<br/>
+            الحاضرون حالياً (checkedIn): {buses.flatMap(b=>b.students).filter(s=>s.checkedIn).length}<br/>
+            المسجّلون للعودة (wentOut): {buses.flatMap(b=>b.students).filter(s=>s.wentOut).length}
+          </div>
         </div>
       ):(<div style={{maxWidth:640,margin:"0 auto",padding:"16px"}}>
         {/* Search + filters */}
@@ -1617,33 +1624,27 @@ function MainApp() {
   const setBoardingMode=(newMode)=>{
     const oldMode=boardingMode;
     if(oldMode===newMode)return;
-    // Persist to the ISOLATED boardingMode document and update local state immediately
     setBoardingModeState(newMode);
     saveBoardingMode(newMode);
     const enteringReturn=newMode==="roundtrip-return"&&oldMode!=="roundtrip-return";
-    setBusesData(prev=>{
-      const u=prev.map(b=>{
-        let students=b.students;
-        if(newMode==="normal"){
-          // Full reset: clear wentOut, boardedBus, return all cross-boarded pilgrims
-          students=students.filter(s=>s.homeBusId===b.id).map(s=>({...s,boardedBus:null,wentOut:false,checkedIn:false,time:null,method:null,addedBy:""}));
-        } else if(newMode==="roundtrip-outbound"){
-          // Start fresh outbound; clear any prior round-trip data
-          students=students.filter(s=>s.homeBusId===b.id).map(s=>({...s,boardedBus:null,wentOut:false,checkedIn:false,time:null,method:null,addedBy:""}));
-        } else if(enteringReturn){
-          // Lock in: everyone currently checked in is marked as "went out".
-          // This runs for ANY transition into return mode (not just from outbound),
-          // so the public return sheet is always populated correctly.
-          students=students.filter(s=>s.homeBusId===b.id).map(s=>({...s,wentOut:!!s.checkedIn,checkedIn:false,boardedBus:null,time:null,method:null,addedBy:""}));
-        } else if(newMode==="open"){
-          students=students.map(s=>({...s,wentOut:false}));
-        }
-        const nb={...b,students,complete:false};
-        persistBus(b.id,nb);
-        return nb;
-      });
-      return u;
+    // Compute the new bus array from the CURRENT state, persist each, then set state.
+    const computed=busesData.map(b=>{
+      let students=b.students;
+      if(newMode==="normal"){
+        students=students.filter(s=>s.homeBusId===b.id).map(s=>({...s,boardedBus:null,wentOut:false,checkedIn:false,time:null,method:null,addedBy:""}));
+      } else if(newMode==="roundtrip-outbound"){
+        students=students.filter(s=>s.homeBusId===b.id).map(s=>({...s,boardedBus:null,wentOut:false,checkedIn:false,time:null,method:null,addedBy:""}));
+      } else if(enteringReturn){
+        // Everyone currently checked in is marked as "went out" for the public return sheet.
+        students=students.filter(s=>s.homeBusId===b.id).map(s=>({...s,wentOut:!!s.checkedIn,checkedIn:false,boardedBus:null,time:null,method:null,addedBy:""}));
+      } else if(newMode==="open"){
+        students=students.map(s=>({...s,wentOut:false}));
+      }
+      return {...b,students,complete:false};
     });
+    // Persist every bus to Firestore (this is the same path check-ins use, so it's reliable)
+    computed.forEach(nb=>persistBus(nb.id,nb));
+    setBusesData(computed);
     // When entering return mode, clear the shared return sheet so it starts fresh
     if(enteringReturn){
       saveReturnAttendance({});
