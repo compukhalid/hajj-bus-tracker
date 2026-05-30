@@ -552,7 +552,7 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers:rawSavedU
 };
 
 /* ═══════ ADMIN DASHBOARD ═══════ */
-const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,boardingMode,onSetMode,onGoTo,busComplete,returnAttendance,onResetAll,t,readOnly})=>{
+const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,boardingMode,onSetMode,onGoTo,busComplete,returnAttendance,onResetAll,onRebuildReturn,t,readOnly})=>{
   const isOpen=boardingMode==="open";
   const isOutbound=boardingMode==="roundtrip-outbound";
   const isReturn=boardingMode==="roundtrip-return";
@@ -639,7 +639,7 @@ const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,boardingMode,on
         <Btn onClick={()=>copyTextToClipboard(`${window.location.origin}/return`,"returnLinkAdmin")} color="#A78BFA" small style={{color:"#fff",whiteSpace:"nowrap"}}>{copied==="returnLinkAdmin"?"✅ تم":"📋 نسخ"}</Btn>
         <Btn onClick={()=>window.open(`${window.location.origin}/return`,"_blank")} color="rgba(168,85,247,0.25)" small style={{color:"#A78BFA",whiteSpace:"nowrap"}}>↗️ فتح</Btn>
       </div>
-      <Btn onClick={()=>onSetMode("roundtrip-return")} color="#A78BFA" small style={{color:"#fff",width:"100%"}}>🔄 إعادة تجهيز قائمة العودة (من الحاضرين حالياً)</Btn>
+      <Btn onClick={()=>onRebuildReturn&&onRebuildReturn()} color="#A78BFA" small style={{color:"#fff",width:"100%"}}>🔄 إعادة تجهيز قائمة العودة (من الحاضرين حالياً)</Btn>
     </div>}
     {isReturn&&totalNotReturned>0&&<div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:12,padding:14,marginBottom:16}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -1411,7 +1411,7 @@ const ReturnSheetPage=()=>{
   const attRef=useRef({});
 
   useEffect(()=>{
-    try{const saved=localStorage.getItem("return_supervisor_name");if(saved){setSupervisorName(saved);setNameSet(true);}}catch(e){}
+    try{const saved=sessionStorage.getItem("return_supervisor_name");if(saved){setSupervisorName(saved);setNameSet(true);}}catch(e){}
     const u1=listenToAllBuses(bs=>{setBuses(bs.length>0?INITIAL_BUS_DATA.map(ib=>{const fb=bs.find(b=>b.id===ib.id);return fb||ib;}):INITIAL_BUS_DATA);setBusesLoaded(true);});
     const u2=listenToReturnAttendance(att=>{attRef.current=att||{};setAttendance(att||{});});
     const u3=listenToBusConfigs(c=>{if(c)setConfigs(c);});
@@ -1456,8 +1456,8 @@ const ReturnSheetPage=()=>{
         <div style={{fontSize:24,fontWeight:800,color:"#C8A951",fontFamily:"'Amiri',serif"}}>حملة المواسم</div>
         <div style={{fontSize:14,color:t.textMuted,marginTop:4,marginBottom:20}}>تسجيل عودة الحجاج</div>
         <div style={{fontSize:14,color:t.text,marginBottom:12}}>أدخل اسمك للمتابعة</div>
-        <input value={supervisorName} onChange={e=>setSupervisorName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&supervisorName.trim()){try{localStorage.setItem("return_supervisor_name",supervisorName.trim());}catch(x){}setNameSet(true);}}} placeholder="اسم المشرف..." style={{width:"100%",background:t.loginInput,border:`1px solid ${t.borderInput}`,color:t.text,borderRadius:12,padding:"14px 16px",fontSize:16,textAlign:"center",outline:"none",boxSizing:"border-box",fontFamily:"inherit",marginBottom:16}}/>
-        <button onClick={()=>{if(supervisorName.trim()){try{localStorage.setItem("return_supervisor_name",supervisorName.trim());}catch(x){}setNameSet(true);}}} style={{width:"100%",padding:14,borderRadius:12,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#C8A951,#A67C2E)",color:"#0B1120",fontSize:18,fontWeight:800,fontFamily:"inherit"}}>دخول →</button>
+        <input value={supervisorName} onChange={e=>setSupervisorName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&supervisorName.trim()){try{sessionStorage.setItem("return_supervisor_name",supervisorName.trim());}catch(x){}setNameSet(true);}}} placeholder="اسم المشرف..." style={{width:"100%",background:t.loginInput,border:`1px solid ${t.borderInput}`,color:t.text,borderRadius:12,padding:"14px 16px",fontSize:16,textAlign:"center",outline:"none",boxSizing:"border-box",fontFamily:"inherit",marginBottom:16}}/>
+        <button onClick={()=>{if(supervisorName.trim()){try{sessionStorage.setItem("return_supervisor_name",supervisorName.trim());}catch(x){}setNameSet(true);}}} style={{width:"100%",padding:14,borderRadius:12,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#C8A951,#A67C2E)",color:"#0B1120",fontSize:18,fontWeight:800,fontFamily:"inherit"}}>دخول →</button>
       </div>
     </div>
   );
@@ -1474,7 +1474,7 @@ const ReturnSheetPage=()=>{
         <div style={{maxWidth:640,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:26}}>🕋</span>
-            <div><div style={{fontSize:15,fontWeight:800,color:"#C8A951",fontFamily:"'Amiri',serif"}}>حملة المواسم</div><div style={{fontSize:11,color:t.textDim}}>مرحباً {supervisorName} 👋</div></div>
+            <div><div style={{fontSize:15,fontWeight:800,color:"#C8A951",fontFamily:"'Amiri',serif"}}>حملة المواسم</div><div style={{fontSize:11,color:t.textDim}}>مرحباً {supervisorName} 👋 <button onClick={()=>{try{sessionStorage.removeItem("return_supervisor_name");}catch(e){}setSupervisorName("");setNameSet(false);}} style={{background:"none",border:"none",color:"#06B6D4",fontSize:11,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit",padding:0}}>(تغيير الاسم)</button></div></div>
           </div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             <span style={{background:"rgba(200,169,81,0.15)",border:"1px solid rgba(200,169,81,0.3)",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,color:"#C8A951"}}>{pilgrims.length} حاج</span>
@@ -1702,6 +1702,25 @@ function MainApp() {
     }
   };
 
+  // Rebuild the return list from current check-ins, callable even while already in return mode.
+  // (requestModeChange would no-op because the mode is unchanged, so this is separate.)
+  const rebuildReturnList=()=>{
+    setBoardingModeState("roundtrip-return");
+    saveBoardingMode("roundtrip-return");
+    setBusesData(prev=>{
+      const computed=prev.map(b=>{
+        const students=b.students.filter(s=>s.homeBusId===b.id).map(s=>{
+          const went=!!s.checkedIn||!!s.wentOut;
+          return {...s,wentOut:went,checkedIn:false,boardedBus:null,time:null,method:null,addedBy:""};
+        });
+        const nb={...b,students,complete:false};
+        persistBus(b.id,nb);
+        return nb;
+      });
+      return computed;
+    });
+  };
+
   const addPilgrim=(busId,data)=>{setBusesData(prev=>{const u=prev.map(b=>{if(b.id!==busId||getBusCount(b.students)>=BUS_CAPACITY)return b;const nb={...b,students:[...b.students,{id:nid(),name:data.name,type:data.type||"pilgrim",room:data.room||"",phone:data.phone||"",familyNum:data.familyNum||"",isHead:!!data.isHead,checkedIn:false,time:null,method:null,homeBusId:busId,boardedBus:null}]};persistBus(busId,nb);return nb;});return u;});};
   const deletePilgrim=(busId,pid)=>{
     // If the deleted student is a bus admin, also remove from busConfigs.busAdmins
@@ -1814,7 +1833,7 @@ function MainApp() {
         </div>
       </div>
       <div style={{padding:20,maxWidth:1100,margin:"0 auto"}}>
-        {(isAdmin||isViewer)&&view==="dashboard"&&<AdminDashboard busesData={busesData} busConfigs={busConfigs} onSelectBus={id=>setView(id)} onLogout={()=>{setAuth(null);setView("dashboard");}} boardingMode={boardingMode} onSetMode={requestModeChange} onGoTo={v=>setView(v)} busComplete={busComplete} returnAttendance={returnAttendance} onResetAll={resetAllCheckins} t={t} readOnly={readOnly}/>}
+        {(isAdmin||isViewer)&&view==="dashboard"&&<AdminDashboard busesData={busesData} busConfigs={busConfigs} onSelectBus={id=>setView(id)} onLogout={()=>{setAuth(null);setView("dashboard");}} boardingMode={boardingMode} onSetMode={requestModeChange} onGoTo={v=>setView(v)} busComplete={busComplete} returnAttendance={returnAttendance} onResetAll={resetAllCheckins} onRebuildReturn={rebuildReturnList} t={t} readOnly={readOnly}/>}
         {isAdmin&&view==="pilgrim-mgmt"&&<PilgrimMgmtPage busesData={busesData} busConfigs={busConfigs} onAdd={addPilgrim} onDelete={deletePilgrim} onEdit={editPilgrim} onTransfer={transferPilgrim} onBulkImport={bulkImport} onBack={()=>setView("dashboard")} t={t}/>}
         {isAdmin&&view==="bus-mgmt"&&<BusMgmtPage busConfigs={busConfigs} onUpdate={updateBusConfigsFn} settings={settings} onUpdateSettings={updateSettings} onBack={()=>setView("dashboard")} t={t}/>}
         {(isAdmin||isViewer||isCarSupervisor)&&view==="cars"&&<CarMgmtPage cars={cars} onSaveCar={saveCar} onDeleteCar={deleteCarFb} onAddHistory={addCarHistory} savedUsers={savedUsers} savedReceivers={savedReceivers} onSaveUsers={n=>saveSavedNames("carUsers",n)} onSaveReceivers={n=>saveSavedNames("keyReceivers",n)} onBack={()=>(isAdmin||isViewer)?setView("dashboard"):setAuth(null)} t={t} readOnly={isViewer} baseUrl={baseUrl}/>}
