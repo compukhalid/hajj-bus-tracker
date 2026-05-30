@@ -552,13 +552,15 @@ const CarMgmtPage=({cars,onSaveCar,onDeleteCar,onAddHistory,savedUsers:rawSavedU
 };
 
 /* ═══════ ADMIN DASHBOARD ═══════ */
-const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,boardingMode,onSetMode,onGoTo,busComplete,returnAttendance,t,readOnly})=>{
+const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,boardingMode,onSetMode,onGoTo,busComplete,returnAttendance,onResetAll,t,readOnly})=>{
   const isOpen=boardingMode==="open";
   const isOutbound=boardingMode==="roundtrip-outbound";
   const isReturn=boardingMode==="roundtrip-return";
   const isNormal=boardingMode==="normal";
   const[notReturnedAllModal,setNotReturnedAllModal]=useState(false);
   const[copied,setCopied]=useState(null);
+  const[resetModal,setResetModal]=useState(false);
+  const totalCheckedIn=busesData.flatMap(b=>b.students).filter(s=>s.checkedIn).length;
 
   // Build per-bus not-returned summary for return mode.
   // Return status comes from the public return sheet (returnAttendance), keyed by pilgrim id.
@@ -608,6 +610,7 @@ const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,boardingMode,on
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         {!readOnly&&<><Btn onClick={()=>onGoTo("pilgrim-mgmt")} color="#10B981" small>🕋 الحجاج</Btn><Btn onClick={()=>onGoTo("bus-mgmt")} color="#3B82F6" small>🚌 الباصات</Btn></>}
         <Btn onClick={()=>onGoTo("cars")} color="#06B6D4" small>🚗 السيارات</Btn>
+        {!readOnly&&<Btn onClick={()=>setResetModal(true)} color="#F59E0B" small>🧹 مسح الحضور</Btn>}
         <Btn onClick={onLogout} color="#EF4444" small>خروج</Btn>
       </div>
     </div>
@@ -626,11 +629,17 @@ const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,boardingMode,on
     </div>}
     {isReturn&&!readOnly&&<div style={{background:"rgba(168,85,247,0.08)",border:"1px solid rgba(168,85,247,0.3)",borderRadius:12,padding:14,marginBottom:16}}>
       <div style={{fontSize:13,fontWeight:800,color:"#A78BFA",marginBottom:8}}>🔗 رابط تسجيل العودة العام</div>
-      <div style={{display:"flex",gap:6}}>
+      {(()=>{const wentOutCount=busesData.flatMap(b=>b.students).filter(s=>s.wentOut&&s.type!=="admin").length;return(
+        <div style={{fontSize:12,color:wentOutCount>0?"#22C55E":"#EF4444",fontWeight:700,marginBottom:8}}>
+          {wentOutCount>0?`✅ ${wentOutCount} حاج جاهزون في قائمة العودة`:"⚠️ القائمة فارغة — اضغط 'إعادة تجهيز القائمة' بالأسفل"}
+        </div>
+      );})()}
+      <div style={{display:"flex",gap:6,marginBottom:8}}>
         <input readOnly value={`${window.location.origin}/return`} style={{flex:1,background:t.bgInput,border:`1px solid ${t.borderInput}`,color:t.text,borderRadius:8,padding:"8px 10px",fontSize:11,fontFamily:"monospace",outline:"none"}}/>
         <Btn onClick={()=>copyTextToClipboard(`${window.location.origin}/return`,"returnLinkAdmin")} color="#A78BFA" small style={{color:"#fff",whiteSpace:"nowrap"}}>{copied==="returnLinkAdmin"?"✅ تم":"📋 نسخ"}</Btn>
         <Btn onClick={()=>window.open(`${window.location.origin}/return`,"_blank")} color="rgba(168,85,247,0.25)" small style={{color:"#A78BFA",whiteSpace:"nowrap"}}>↗️ فتح</Btn>
       </div>
+      <Btn onClick={()=>onSetMode("roundtrip-return")} color="#A78BFA" small style={{color:"#fff",width:"100%"}}>🔄 إعادة تجهيز قائمة العودة (من الحاضرين حالياً)</Btn>
     </div>}
     {isReturn&&totalNotReturned>0&&<div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:12,padding:14,marginBottom:16}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -669,6 +678,22 @@ const AdminDashboard=({busesData,busConfigs,onSelectBus,onLogout,boardingMode,on
           {isReturn&&notReturned>0&&<div style={{fontSize:11,color:"#EF4444",marginTop:8,fontWeight:700}}>⚠️ {notReturned} لم يعد بعد</div>}
         </div>);})}
     </div>
+
+    {/* Reset all check-ins confirmation */}
+    <Modal open={resetModal} onClose={()=>setResetModal(false)} title="🧹 مسح كل الحضور" t={t}>
+      <div style={{fontSize:14,marginBottom:8}}>سيتم مسح حضور جميع الحجاج في كل الباصات وفي جميع الأوضاع.</div>
+      <div style={{fontSize:12,color:t.textMuted,marginBottom:8,lineHeight:1.8}}>
+        يشمل: تسجيلات الحضور (✅)، حالة "تام"، قائمة العودة، وأي ركوب متبادل.<br/>
+        <span style={{color:"#22C55E",fontWeight:700}}>يبقى محفوظاً:</span> الحجاج، العائلات، الغرف، الأرقام، وإعدادات الباصات.
+      </div>
+      <div style={{fontSize:13,color:"#F59E0B",fontWeight:700,marginBottom:16,padding:"8px 12px",background:"rgba(245,158,11,0.1)",borderRadius:8,border:"1px solid rgba(245,158,11,0.3)"}}>
+        ⚠️ {totalCheckedIn} حاج مسجّل حضورهم حالياً — سيتم مسحهم. لا يمكن التراجع.
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <Btn onClick={()=>setResetModal(false)} color="transparent" style={{flex:1,border:`1px solid ${t.border}`,color:t.textMuted}}>إلغاء</Btn>
+        <Btn onClick={()=>{onResetAll();setResetModal(false);}} color="#F59E0B" style={{flex:1}}>🧹 نعم، امسح الكل</Btn>
+      </div>
+    </Modal>
 
     {/* All buses "not returned" modal — separate copy per bus + one big copy */}
     <Modal open={notReturnedAllModal} onClose={()=>setNotReturnedAllModal(false)} title="⚠️ تقرير من لم يعد بعد" width={600} t={t}>
@@ -1608,6 +1633,27 @@ function MainApp() {
     setBusesData(prev=>{const u=prev.map(b=>{if(b.id!==busId)return b;const nb={...b,complete:val};persistBus(busId,nb);return nb;});return u;});
   };
 
+  // RESET ALL: clears every check-in, تام status, return flags, and the public return sheet
+  // across ALL buses, in ANY mode. Keeps pilgrims, families, rooms, phones, and bus configs.
+  // Cross-boarded pilgrims are returned to their home bus.
+  const resetAllCheckins=()=>{
+    setBusesData(prev=>{
+      const computed=prev.map(b=>{
+        // Keep only this bus's home pilgrims (drops any cross-boarded copies),
+        // and clear all attendance/return state. Identity fields are preserved.
+        const students=b.students
+          .filter(s=>s.homeBusId===b.id)
+          .map(s=>({...s,checkedIn:false,time:null,method:null,addedBy:"",wentOut:false,boardedBus:null}));
+        const nb={...b,students,complete:false,status:"stopped",destination:""};
+        persistBus(b.id,nb);
+        return nb;
+      });
+      return computed;
+    });
+    // Clear the public return sheet too
+    saveReturnAttendance({});
+  };
+
   // Helper: returns the count that matters for capacity check
   // In open/return mode: only checked-in students count toward capacity
   // In other modes: all assigned students count
@@ -1623,30 +1669,35 @@ function MainApp() {
   //                       (only when transitioning FROM outbound; if already in return, no-op)
   const setBoardingMode=(newMode)=>{
     const oldMode=boardingMode;
-    if(oldMode===newMode)return;
+    // Allow re-entering return mode to re-capture wentOut (don't bail when same mode IS return)
+    if(oldMode===newMode&&newMode!=="roundtrip-return")return;
     setBoardingModeState(newMode);
     saveBoardingMode(newMode);
-    const enteringReturn=newMode==="roundtrip-return"&&oldMode!=="roundtrip-return";
-    // Compute the new bus array from the CURRENT state, persist each, then set state.
-    const computed=busesData.map(b=>{
-      let students=b.students;
-      if(newMode==="normal"){
-        students=students.filter(s=>s.homeBusId===b.id).map(s=>({...s,boardedBus:null,wentOut:false,checkedIn:false,time:null,method:null,addedBy:""}));
-      } else if(newMode==="roundtrip-outbound"){
-        students=students.filter(s=>s.homeBusId===b.id).map(s=>({...s,boardedBus:null,wentOut:false,checkedIn:false,time:null,method:null,addedBy:""}));
-      } else if(enteringReturn){
-        // Everyone currently checked in is marked as "went out" for the public return sheet.
-        students=students.filter(s=>s.homeBusId===b.id).map(s=>({...s,wentOut:!!s.checkedIn,checkedIn:false,boardedBus:null,time:null,method:null,addedBy:""}));
-      } else if(newMode==="open"){
-        students=students.map(s=>({...s,wentOut:false}));
-      }
-      return {...b,students,complete:false};
+    const enteringReturn=newMode==="roundtrip-return";
+    setBusesData(prev=>{
+      const computed=prev.map(b=>{
+        let students=b.students;
+        if(newMode==="normal"){
+          students=students.filter(s=>s.homeBusId===b.id).map(s=>({...s,boardedBus:null,wentOut:false,checkedIn:false,time:null,method:null,addedBy:""}));
+        } else if(newMode==="roundtrip-outbound"){
+          students=students.filter(s=>s.homeBusId===b.id).map(s=>({...s,boardedBus:null,wentOut:false,checkedIn:false,time:null,method:null,addedBy:""}));
+        } else if(enteringReturn){
+          // Mark everyone currently checked in (OR already flagged wentOut) as "went out".
+          // Re-runnable: pressing تسجيل العودة again won't lose existing wentOut flags.
+          students=students.filter(s=>s.homeBusId===b.id).map(s=>{
+            const went=!!s.checkedIn||!!s.wentOut;
+            return {...s,wentOut:went,checkedIn:false,boardedBus:null,time:null,method:null,addedBy:""};
+          });
+        } else if(newMode==="open"){
+          students=students.map(s=>({...s,wentOut:false}));
+        }
+        return {...b,students,complete:false};
+      });
+      computed.forEach(nb=>persistBus(nb.id,nb));
+      return computed;
     });
-    // Persist every bus to Firestore (this is the same path check-ins use, so it's reliable)
-    computed.forEach(nb=>persistBus(nb.id,nb));
-    setBusesData(computed);
-    // When entering return mode, clear the shared return sheet so it starts fresh
-    if(enteringReturn){
+    // Clear the shared return sheet only on the FIRST entry (from a non-return mode)
+    if(enteringReturn&&oldMode!=="roundtrip-return"){
       saveReturnAttendance({});
     }
   };
@@ -1763,7 +1814,7 @@ function MainApp() {
         </div>
       </div>
       <div style={{padding:20,maxWidth:1100,margin:"0 auto"}}>
-        {(isAdmin||isViewer)&&view==="dashboard"&&<AdminDashboard busesData={busesData} busConfigs={busConfigs} onSelectBus={id=>setView(id)} onLogout={()=>{setAuth(null);setView("dashboard");}} boardingMode={boardingMode} onSetMode={requestModeChange} onGoTo={v=>setView(v)} busComplete={busComplete} returnAttendance={returnAttendance} t={t} readOnly={readOnly}/>}
+        {(isAdmin||isViewer)&&view==="dashboard"&&<AdminDashboard busesData={busesData} busConfigs={busConfigs} onSelectBus={id=>setView(id)} onLogout={()=>{setAuth(null);setView("dashboard");}} boardingMode={boardingMode} onSetMode={requestModeChange} onGoTo={v=>setView(v)} busComplete={busComplete} returnAttendance={returnAttendance} onResetAll={resetAllCheckins} t={t} readOnly={readOnly}/>}
         {isAdmin&&view==="pilgrim-mgmt"&&<PilgrimMgmtPage busesData={busesData} busConfigs={busConfigs} onAdd={addPilgrim} onDelete={deletePilgrim} onEdit={editPilgrim} onTransfer={transferPilgrim} onBulkImport={bulkImport} onBack={()=>setView("dashboard")} t={t}/>}
         {isAdmin&&view==="bus-mgmt"&&<BusMgmtPage busConfigs={busConfigs} onUpdate={updateBusConfigsFn} settings={settings} onUpdateSettings={updateSettings} onBack={()=>setView("dashboard")} t={t}/>}
         {(isAdmin||isViewer||isCarSupervisor)&&view==="cars"&&<CarMgmtPage cars={cars} onSaveCar={saveCar} onDeleteCar={deleteCarFb} onAddHistory={addCarHistory} savedUsers={savedUsers} savedReceivers={savedReceivers} onSaveUsers={n=>saveSavedNames("carUsers",n)} onSaveReceivers={n=>saveSavedNames("keyReceivers",n)} onBack={()=>(isAdmin||isViewer)?setView("dashboard"):setAuth(null)} t={t} readOnly={isViewer} baseUrl={baseUrl}/>}
